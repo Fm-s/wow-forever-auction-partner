@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub const DEFAULT_CADENCE_SECS: i64 = 3600;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct AppSettings {
     pub cadence_secs: i64,
     pub cut_bps_alliance: i64,
@@ -83,6 +83,14 @@ mod tests {
         s.collection_paused = true;
         save_settings(&c, &s).unwrap();
         assert_eq!(load_settings(&c), s);
+    }
+
+    #[test]
+    fn settings_missing_fields_keep_stored_values() {
+        let c = open_in_memory();
+        set_kv(&c, "app", r#"{"cadenceSecs":1800,"cutBpsHorde":700}"#).unwrap();
+        let s = load_settings(&c);
+        assert_eq!((s.cadence_secs, s.cut_bps_horde, s.cut_bps_blackwater), (1800, 700, 1500));
     }
 
     #[test]

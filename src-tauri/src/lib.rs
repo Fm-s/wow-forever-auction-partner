@@ -33,10 +33,12 @@ impl AppState {
             let conn = self.db.lock().map_err(|e| e.to_string())?;
             save_settings(&conn, &s).map_err(|e| e.to_string())?;
         }
-        let autolaunch = app.autolaunch();
-        let res = if s.launch_at_login { autolaunch.enable() } else { autolaunch.disable() };
-        if let Err(e) = res {
-            eprintln!("autostart: {e}");
+        if !cfg!(debug_assertions) {
+            let autolaunch = app.autolaunch();
+            let res = if s.launch_at_login { autolaunch.enable() } else { autolaunch.disable() };
+            if let Err(e) = res {
+                eprintln!("autostart: {e}");
+            }
         }
         self.collector.set_paused(s.collection_paused);
         if let Some(items) = app.try_state::<tray::TrayItems>() {
@@ -79,7 +81,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let items = tray::build(app.handle(), settings.collection_paused)?;
     app.manage(items);
 
-    if settings.launch_at_login && !app.autolaunch().is_enabled().unwrap_or(false)
+    // Never register a debug build as the login item: it would point at target/debug.
+    if !cfg!(debug_assertions)
+        && settings.launch_at_login
+        && !app.autolaunch().is_enabled().unwrap_or(false)
         && let Err(e) = app.autolaunch().enable() {
             eprintln!("autostart: {e}");
         }
@@ -94,6 +99,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // One collector per database: a second launch just shows the running instance.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main_window(app)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![HIDDEN_ARG])))
         .setup(setup)
@@ -105,6 +112,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_market,
+            commands::get_item_row,
             commands::get_item_history,
             commands::get_cross_house,
             commands::get_health,

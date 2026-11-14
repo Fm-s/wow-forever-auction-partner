@@ -1,5 +1,6 @@
 //! Shared lookups for the UI queries.
 use crate::domain::{Feed, House, STALE_FACTOR};
+use crate::processing::ingest::utc_day;
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 
@@ -65,43 +66,52 @@ pub struct LatestAgg {
 }
 
 pub fn snapshot_aggregates(conn: &Connection, snapshot_id: i64) -> rusqlite::Result<Vec<LatestAgg>> {
-    let mut st = conn.prepare("SELECT item_id, variant_key, min_price, median, quantity FROM item_aggregates WHERE snapshot_id = ?1")?;
-    let rows = st.query_map([snapshot_id], |r| Ok(LatestAgg { item_id: r.get(0)?, variant_key: r.get(1)?, min_price: r.get(2)?, median: r.get(3)?, quantity: r.get(4)? }))?;
+    snapshot_aggregates_for(conn, snapshot_id, None)
+}
+
+/// Aggregates of one snapshot, optionally only one item variant.
+pub fn snapshot_aggregates_for(conn: &Connection, snapshot_id: i64, only: Option<(i64, &str)>) -> rusqlite::Result<Vec<LatestAgg>> {
+    let (item, variant) = only.map_or((None, None), |(i, v)| (Some(i), Some(v)));
+    let mut st = conn.prepare_cached(
+        "SELECT item_id, variant_key, min_price, median, quantity FROM item_aggregates
+         WHERE snapshot_id = ?1 AND (?2 IS NULL OR (item_id = ?2 AND variant_key = ?3))",
+    )?;
+    let rows = st.query_map(params![snapshot_id, item, variant], |r| Ok(LatestAgg { item_id: r.get(0)?, variant_key: r.get(1)?, min_price: r.get(2)?, median: r.get(3)?, quantity: r.get(4)? }))?;
     rows.collect()
 }
 
-/// Per (item, variant): per-snapshot medians since `from`, with the first and last snapshot time.
-pub fn window_medians(conn: &Connection, house: House, feed: Feed, from: i64) -> rusqlite::Result<HashMap<Key, MedianWindow>> {
-    let mut st = conn.prepare(
-        "SELECT a.item_id, a.variant_key, a.median, s.last_modified FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
-         WHERE s.house = ?1 AND s.feed = ?2 AND s.last_modified >= ?3 AND a.median IS NOT NULL",
+/// First UTC day of the 7-day window ending today.
+pub fn week_start_day(now: i64) -> String {
+    utc_day(now - 6 * 86400).0
+}
+
+/// Per (item, variant): the daily rollup medians and summed est. sold since `from_day` (inclusive).
+/// `only` restricts it to one item variant.
+pub fn rollups_since(conn: &Connection, house: House, from_day: &str, only: Option<(i64, &str)>) -> rusqlite::Result<HashMap<Key, (Vec<i64>, i64)>> {
+    let (item, variant) = only.map_or((None, None), |(i, v)| (Some(i), Some(v)));
+    let mut st = conn.prepare_cached(
+        "SELECT item_id, variant_key, median, est_sold FROM daily_rollups
+         WHERE house = ?1 AND day >= ?2 AND (?3 IS NULL OR (item_id = ?3 AND variant_key = ?4))",
     )?;
-    let mut out: HashMap<Key, MedianWindow> = HashMap::new();
-    let mut rows = st.query(params![house.as_str(), feed.as_str(), from])?;
+    let mut out: HashMap<Key, (Vec<i64>, i64)> = HashMap::new();
+    let mut rows = st.query(params![house.as_str(), from_day, item, variant])?;
     while let Some(r) = rows.next()? {
-        let key: Key = (r.get(0)?, r.get(1)?);
-        let (m, t): (i64, i64) = (r.get(2)?, r.get(3)?);
-        let e = out.entry(key).or_insert_with(|| (Vec::new(), t, t));
-        e.0.push(m);
-        e.1 = e.1.min(t);
-        e.2 = e.2.max(t);
+        let e = out.entry((r.get(0)?, r.get(1)?)).or_default();
+        if let Some(m) = r.get::<_, Option<i64>>(2)? {
+            e.0.push(m);
+        }
+        e.1 += r.get::<_, i64>(3)?;
     }
     Ok(out)
 }
 
-/// est. units sold per (item, variant) over non-gap snapshots since `from`, and the seconds they cover.
-pub fn sold_in_window(conn: &Connection, house: House, feed: Feed, from: i64) -> rusqlite::Result<(HashMap<Key, i64>, i64)> {
-    let covered: i64 = conn.query_row(
-        "SELECT COALESCE(SUM(dt_secs), 0) FROM feed_snapshots WHERE house = ?1 AND feed = ?2 AND gap = 0 AND dt_secs IS NOT NULL AND last_modified >= ?3",
-        params![house.as_str(), feed.as_str(), from],
+/// Seconds of non-gap snapshot coverage for a feed since `from_day` (inclusive).
+pub fn coverage_since(conn: &Connection, house: House, feed: Feed, from_day: &str) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COALESCE(SUM(covered_secs), 0) FROM daily_coverage WHERE house = ?1 AND feed = ?2 AND day >= ?3",
+        params![house.as_str(), feed.as_str(), from_day],
         |r| r.get(0),
-    )?;
-    let mut st = conn.prepare(
-        "SELECT v.item_id, v.variant_key, SUM(v.est_sold) FROM volume v JOIN feed_snapshots s ON s.id = v.snapshot_id
-         WHERE s.house = ?1 AND s.feed = ?2 AND s.gap = 0 AND s.last_modified >= ?3 GROUP BY v.item_id, v.variant_key",
-    )?;
-    let rows = st.query_map(params![house.as_str(), feed.as_str(), from], |r| Ok(((r.get(0)?, r.get(1)?), r.get(2)?)))?;
-    Ok((rows.collect::<rusqlite::Result<_>>()?, covered))
+    )
 }
 
 pub fn per_day(sold: i64, covered_secs: i64) -> Option<f64> {
@@ -131,16 +141,23 @@ pub fn delta_pct(blizzard: Option<i64>, blizzard_t: i64, ahl: Option<i64>, ahl_t
     }
 }
 
-/// Blizzard min unit price per item across variants and both feeds' latest snapshots, with that snapshot's time.
-pub fn latest_item_mins(conn: &Connection, house: House) -> rusqlite::Result<HashMap<i64, (i64, i64)>> {
-    let mut out: HashMap<i64, (i64, i64)> = HashMap::new();
+pub struct ItemMin {
+    pub min: i64,
+    pub snapshot_t: i64,
+    /// Variant holding the minimum.
+    pub variant_key: String,
+}
+
+/// Blizzard min unit price per item across variants and both feeds' latest snapshots.
+pub fn latest_item_mins(conn: &Connection, house: House) -> rusqlite::Result<HashMap<i64, ItemMin>> {
+    let mut out: HashMap<i64, ItemMin> = HashMap::new();
     for feed in Feed::ALL {
         let Some((id, lm)) = latest_snapshot(conn, house, feed)? else { continue };
         for a in snapshot_aggregates(conn, id)? {
             if let Some(m) = a.min_price {
-                let e = out.entry(a.item_id).or_insert((m, lm));
-                if m < e.0 {
-                    *e = (m, lm);
+                let better = out.get(&a.item_id).is_none_or(|e| m < e.min);
+                if better {
+                    out.insert(a.item_id, ItemMin { min: m, snapshot_t: lm, variant_key: a.variant_key });
                 }
             }
         }

@@ -55,13 +55,13 @@ export function PriceChart({ history, houseColor }: { history: ItemHistory; hous
   return <ReactECharts option={option} style={{ height: 340 }} notMerge />;
 }
 
-/** Est. units sold per UTC day. */
-export function SoldChart({ daily }: { daily: [string, number][] }) {
+/** Est. units sold per UTC day, normalised by coverage; blank bars are days with too little data. */
+export function SoldChart({ daily }: { daily: [string, number | null][] }) {
   const text = css("--muted");
   const option = {
     animation: false,
     grid: { left: 50, right: 16, top: 10, bottom: 30 },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter: (v: number | null) => (v === null || v === undefined ? "not enough data" : v.toFixed(1)) },
     xAxis: { type: "category", data: daily.map((d) => d[0].slice(5)), axisLabel: { color: text } },
     yAxis: { type: "value", axisLabel: { color: text }, splitLine: { lineStyle: { color: css("--line") } } },
     series: [{ name: "Est. sold", type: "bar", data: daily.map((d) => d[1]), itemStyle: { color: css("--silver") }, barMaxWidth: 18 }],

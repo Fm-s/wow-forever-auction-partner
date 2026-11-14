@@ -255,16 +255,22 @@ impl Collector {
         };
 
         let mut fatal: Option<String> = None;
+        let mut blizzard_ok = 0usize;
         'feeds: for house in House::ALL {
             for feed in Feed::ALL {
                 let (stored_lm, _) = self.stored("blizzard", house, feed.as_str());
                 match blizzard.fetch_feed(house, feed, stored_lm).await {
-                    Ok(FeedFetch::NotModified) => self.record_ok("blizzard", house, feed.as_str(), now, None, None),
+                    Ok(FeedFetch::NotModified) => {
+                        blizzard_ok += 1;
+                        self.record_ok("blizzard", house, feed.as_str(), now, None, None)
+                    }
                     Ok(FeedFetch::Fresh { last_modified, .. }) if Some(last_modified) == stored_lm => {
+                        blizzard_ok += 1;
                         self.record_ok("blizzard", house, feed.as_str(), now, None, None)
                     }
                     Ok(FeedFetch::Fresh { last_modified, body }) => match self.ingest(house, feed, last_modified, now, body, cadence).await {
                         Ok(outcome) => {
+                            blizzard_ok += 1;
                             self.record_ok("blizzard", house, feed.as_str(), now, Some(last_modified), None);
                             if let IngestOutcome::Ingested { snapshot_id, .. } = outcome {
                                 report.new_snapshots += 1;
@@ -299,6 +305,11 @@ impl Collector {
                     }
                 }
             }
+        }
+
+        if fatal.is_none() && blizzard_ok == 0 {
+            let last = report.errors.last().cloned().unwrap_or_default();
+            fatal = Some(format!("All Blizzard feeds failing ({last})"));
         }
 
         if report.new_snapshots > 0 || now - st.last_ahledger_at >= AHLEDGER_MIN_SECS {
@@ -507,6 +518,17 @@ mod tests {
         assert_eq!(report.new_snapshots, 6);
         assert_eq!(q(&h.db, "SELECT COUNT(*) FROM source_status WHERE source='ahledger' AND last_error IS NOT NULL"), 2);
         assert_eq!(h.collector.status().state, "running");
+    }
+
+    #[tokio::test]
+    async fn all_feeds_failing_is_error_state() {
+        let h = harness(true).await;
+        h.server.mock_async(|w, t| { w.method(GET).path_prefix("/data/wow/ruleset/"); t.status(500); }).await;
+        mock_ahledger_ok(&h.server).await;
+        h.collector.run_cycle(NOW).await;
+        let s = h.collector.status();
+        assert_eq!(s.state, "error");
+        assert!(s.message.unwrap().contains("Blizzard"));
     }
 
     #[tokio::test]

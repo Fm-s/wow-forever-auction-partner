@@ -40,11 +40,15 @@ pub struct HistoryPoint {
 #[serde(rename_all = "camelCase")]
 pub struct ItemHistory {
     pub points: Vec<HistoryPoint>,
-    /// (UTC day, est. units sold that day)
-    pub est_sold_daily: Vec<(String, i64)>,
+    /// (UTC day, est. units sold per day normalised by that day's coverage; None when under 6 h covered)
+    pub est_sold_daily: Vec<(String, Option<f64>)>,
     pub volatility_7d: Option<f64>,
     /// (AHledger as_of, min buyout)
     pub ahledger: Vec<(i64, Option<i64>)>,
+}
+
+fn day_start(day: &str) -> i64 {
+    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").map(|d| d.and_hms_opt(0, 0, 0).expect("midnight").and_utc().timestamp()).unwrap_or(0)
 }
 
 /// Price/quantity series for one item variant in one house. Snapshots where it isn't listed show
@@ -82,17 +86,44 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
             let mut st = conn.prepare("SELECT day, min_price, median, avg_quantity FROM daily_rollups WHERE house = ?1 AND item_id = ?2 AND variant_key = ?3 ORDER BY day")?;
             let rows = st.query_map(params![house.as_str(), item_id, variant_key], |r| {
                 let day: String = r.get(0)?;
-                let t = chrono::NaiveDate::parse_from_str(&day, "%Y-%m-%d").map(|d| d.and_hms_opt(0, 0, 0).expect("midnight").and_utc().timestamp()).unwrap_or(0);
-                Ok(HistoryPoint { t, min_price: r.get(1)?, median: r.get(2)?, quantity: r.get(3)? })
+                Ok(HistoryPoint { t: day_start(&day), min_price: r.get(1)?, median: r.get(2)?, quantity: r.get(3)? })
             })?;
-            points = rows.collect::<rusqlite::Result<_>>()?;
+            for p in rows {
+                let p = p?;
+                // a missing day (Mac off, item unlisted) is a break, never a straight line
+                if let Some(prev) = points.last().map(|x: &HistoryPoint| x.t) {
+                    let mut t = prev + 86400;
+                    while t < p.t {
+                        points.push(HistoryPoint { t, min_price: None, median: None, quantity: None });
+                        t += 86400;
+                    }
+                }
+                points.push(p);
+            }
         }
         _ => {}
     }
 
     let from_day = from.map(|f| utc_day(f).0).unwrap_or_default();
-    let mut st = conn.prepare("SELECT day, est_sold FROM daily_rollups WHERE house = ?1 AND item_id = ?2 AND variant_key = ?3 AND day >= ?4 ORDER BY day")?;
-    let est_sold_daily = st.query_map(params![house.as_str(), item_id, variant_key, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+    let mut est_sold_daily: Vec<(String, Option<f64>)> = Vec::new();
+    if let Some(feed) = &feed {
+        let mut sold_st = conn.prepare("SELECT day, est_sold FROM daily_rollups WHERE house = ?1 AND item_id = ?2 AND variant_key = ?3 AND day >= ?4")?;
+        let sold: std::collections::HashMap<String, i64> =
+            sold_st.query_map(params![house.as_str(), item_id, variant_key, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        let mut cov_st = conn.prepare("SELECT day, covered_secs FROM daily_coverage WHERE house = ?1 AND feed = ?2 AND day >= ?3 ORDER BY day")?;
+        let cov: Vec<(String, i64)> = cov_st.query_map(params![house.as_str(), feed, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        for (day, covered) in cov {
+            if let Some((prev, _)) = est_sold_daily.last() {
+                let mut t = day_start(prev) + 86400;
+                while t < day_start(&day) {
+                    est_sold_daily.push((utc_day(t).0, None));
+                    t += 86400;
+                }
+            }
+            let value = per_day(sold.get(&day).copied().unwrap_or(0), covered);
+            est_sold_daily.push((day, value));
+        }
+    }
 
     let mut st = conn.prepare(
         "SELECT a.median FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
@@ -163,8 +194,39 @@ mod tests {
         seed(&mut c, House::Alliance, Feed::Items, NOW - 3 * 86400, &[li(1, 5, "", 100, 1, TimeLeft::VeryLong)]);
         seed(&mut c, House::Alliance, Feed::Items, NOW - H, &[li(2, 5, "", 300, 1, TimeLeft::VeryLong)]);
         let h = item_history(&c, House::Alliance, 5, "", HistoryRange::All, NOW).unwrap();
-        assert_eq!(h.points.iter().map(|p| p.median).collect::<Vec<_>>(), vec![Some(100), Some(300)]);
-        assert_eq!(h.est_sold_daily.len(), 2);
+        // medians come from the rollups (the missing day in between is a break, see all_range_breaks_on_missing_days)
+        assert_eq!(h.points.iter().filter_map(|p| p.median).collect::<Vec<_>>(), vec![100, 300]);
+        // both days have coverage rows (0 s each: a single snapshot and then a gap) -> padded, all None
+        assert_eq!(h.est_sold_daily.iter().map(|d| d.1).collect::<Vec<_>>(), vec![None, None, None]);
+    }
+
+    #[test]
+    fn all_range_breaks_on_missing_days() {
+        let mut c = open_in_memory();
+        seed(&mut c, House::Alliance, Feed::Items, NOW - 3 * 86400, &[li(1, 5, "", 100, 1, TimeLeft::VeryLong)]);
+        seed(&mut c, House::Alliance, Feed::Items, NOW - H, &[li(2, 5, "", 300, 1, TimeLeft::VeryLong)]);
+        let h = item_history(&c, House::Alliance, 5, "", HistoryRange::All, NOW).unwrap();
+        let day = |d: i64| NOW - d * 86400;
+        let pts: Vec<_> = h.points.iter().map(|p| (p.t, p.median)).collect();
+        assert_eq!(pts, vec![(day(3), Some(100)), (day(2), None), (day(1), Some(300))]);
+    }
+
+    #[test]
+    fn est_sold_daily_is_normalised_and_partial_days_are_none() {
+        let mut c = open_in_memory();
+        // day NOW-2d: 8 hourly snapshots, one LONG listing vanishes each hour -> 7 sold over 7 h covered
+        let d0 = NOW - 2 * 86400;
+        for k in 0..8i64 {
+            let ls: Vec<_> = (k..k + 10).map(|a| li(a, 5, "", 100, 1, TimeLeft::Long)).collect();
+            seed(&mut c, House::Alliance, Feed::Items, d0 + k * H, &ls);
+        }
+        // day NOW-1d: a single snapshot 3 hours later (gap) -> no coverage that day
+        seed(&mut c, House::Alliance, Feed::Items, NOW - 86400 + 2 * H, &[li(100, 5, "", 100, 1, TimeLeft::Long)]);
+        let h = item_history(&c, House::Alliance, 5, "", HistoryRange::D7, NOW).unwrap();
+        let by_day: std::collections::HashMap<_, _> = h.est_sold_daily.iter().cloned().collect();
+        let v = by_day.get("2026-11-22").copied().flatten().unwrap();
+        assert!((v - 24.0).abs() < 1e-9, "{v}");
+        assert_eq!(by_day.get("2026-11-23").copied().flatten(), None);
     }
 
     #[test]

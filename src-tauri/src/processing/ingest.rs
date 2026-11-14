@@ -97,6 +97,7 @@ pub fn ingest_feed(
         params![house.as_str(), feed.as_str()],
     )?;
     update_rollups(&tx, house, feed, last_modified, &touched)?;
+    update_coverage(&tx, house, feed, last_modified)?;
     tx.commit()?;
     Ok(IngestOutcome::Ingested { snapshot_id, gap })
 }
@@ -158,6 +159,18 @@ fn update_rollups(tx: &Transaction, house: House, feed: Feed, t: i64, touched: &
         let avg_q = if qtys.is_empty() { None } else { Some((qtys.iter().sum::<i64>() as f64 / qtys.len() as f64).round() as i64) };
         st.execute(params![house.as_str(), item_id, variant, day, mins.iter().min().copied(), median, avg_q, sold])?;
     }
+    Ok(())
+}
+
+fn update_coverage(tx: &Transaction, house: House, feed: Feed, t: i64) -> rusqlite::Result<()> {
+    let (day, start) = utc_day(t);
+    tx.execute(
+        "INSERT INTO daily_coverage(house, feed, day, covered_secs)
+         SELECT ?1, ?2, ?3, COALESCE(SUM(dt_secs), 0) FROM feed_snapshots
+         WHERE house = ?1 AND feed = ?2 AND gap = 0 AND dt_secs IS NOT NULL AND last_modified >= ?4 AND last_modified < ?5
+         ON CONFLICT(house, feed, day) DO UPDATE SET covered_secs = excluded.covered_secs",
+        params![house.as_str(), feed.as_str(), day, start, start + 86400],
+    )?;
     Ok(())
 }
 
@@ -283,6 +296,15 @@ mod tests {
         // snapshot medians 100, 300, 200 -> 200; mins 100, 100, 200 -> 100; quantities 1, 6, 1 -> avg 3 (rounded)
         // sold: snapshot 3 vanished auctions 1 (qty 1) and 2 (qty 5), both LONG -> 6
         assert_eq!((min, med, avg_q, sold), (100, 200, 3, 6));
+    }
+
+    #[test]
+    fn daily_coverage_sums_non_gap_dt() {
+        let mut c = open_in_memory();
+        for t in [T0, T0 + H, T0 + 2 * H, T0 + 6 * H] {
+            ing(&mut c, t, &[]);
+        }
+        assert_eq!(count(&c, "SELECT covered_secs FROM daily_coverage WHERE house='alliance' AND feed='items' AND day='2026-11-14'"), 2 * H);
     }
 
     #[test]

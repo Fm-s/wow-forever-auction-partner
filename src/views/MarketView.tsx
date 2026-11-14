@@ -9,6 +9,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { getMarket, onSnapshot } from "../api";
+import { debounce } from "../debounce";
 import { AhledgerCredit } from "../components/AhledgerCredit";
 import { ItemName } from "../components/ItemName";
 import { Money } from "../components/Money";
@@ -61,9 +62,11 @@ export function MarketView({ house, onOpenItem }: { house: House; onOpenItem: (i
         .then((d) => live && (setData(d), setError(null)))
         .catch((e) => live && setError(String(e)));
     void load();
-    const un = onSnapshot((e) => e.house === house && void load());
+    const reload = debounce(() => void load(), 1500);
+    const un = onSnapshot((e) => e.house === house && reload());
     return () => {
       live = false;
+      reload.cancel();
       void un.then((f) => f());
     };
   }, [house]);

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { getCrossHouse, getItemHistory, getMarket, onSnapshot } from "../api";
+import { getCrossHouse, getItemHistory, getItemRow, onSnapshot } from "../api";
+import { debounce } from "../debounce";
 import { AhledgerCredit } from "../components/AhledgerCredit";
 import { qualityClass } from "../components/ItemName";
 import { Money } from "../components/Money";
@@ -18,17 +19,24 @@ export function ItemView({ house, item, onBack }: { house: House; item: ItemRef;
 
   useEffect(() => {
     let live = true;
+    const fail = (e: unknown) => live && setError(String(e));
     const load = () => {
       getItemHistory(house, item.itemId, item.variantKey, range)
         .then((h) => live && setHistory(h))
-        .catch((e) => live && setError(String(e)));
-      getCrossHouse(item.itemId, item.variantKey).then((c) => live && setCross(c));
-      getMarket(house).then((m) => live && setRow(m.rows.find((r) => r.itemId === item.itemId && r.variantKey === item.variantKey) ?? null));
+        .catch(fail);
+      getCrossHouse(item.itemId, item.variantKey)
+        .then((c) => live && setCross(c))
+        .catch(fail);
+      getItemRow(house, item.itemId, item.variantKey)
+        .then((r) => live && setRow(r))
+        .catch(fail);
     };
     load();
-    const un = onSnapshot((e) => e.house === house && load());
+    const reload = debounce(load, 1500);
+    const un = onSnapshot((e) => e.house === house && reload());
     return () => {
       live = false;
+      reload.cancel();
       void un.then((f) => f());
     };
   }, [house, item.itemId, item.variantKey, range]);
@@ -67,7 +75,11 @@ export function ItemView({ house, item, onBack }: { house: House; item: ItemRef;
             <div className="view-empty">No history in this range yet.</div>
           )}
           <h2>Est. sold per day</h2>
-          {history && history.estSoldDaily.length > 0 ? <SoldChart daily={history.estSoldDaily} /> : <div className="muted">Not enough snapshots yet.</div>}
+          {history && history.estSoldDaily.some((d) => d[1] !== null) ? (
+            <SoldChart daily={history.estSoldDaily} />
+          ) : (
+            <div className="muted">Not enough snapshots yet. Days with under 6 hours of data are left blank.</div>
+          )}
         </div>
         <div style={{ display: "grid", gap: 18, alignContent: "start" }}>
           <div className="panel">

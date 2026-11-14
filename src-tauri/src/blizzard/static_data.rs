@@ -38,12 +38,14 @@ fn namespace_from_href(href: &str) -> Option<String> {
     href.split(['?', '&']).find_map(|kv| kv.strip_prefix("namespace=")).map(str::to_string)
 }
 
-/// Item ids seen in aggregates without metadata, plus items fetched under an older static namespace.
+/// Item ids in each feed's latest snapshot without metadata, plus items fetched under an older static namespace.
 pub fn missing_item_ids(conn: &Connection, limit: usize) -> rusqlite::Result<Vec<i64>> {
     let current = get_kv(conn, "static_ns");
     let mut st = conn.prepare(
         "SELECT item_id FROM (
-            SELECT DISTINCT item_id FROM item_aggregates WHERE item_id NOT IN (SELECT item_id FROM items)
+            SELECT DISTINCT item_id FROM item_aggregates
+            WHERE snapshot_id IN (SELECT MAX(id) FROM feed_snapshots GROUP BY house, feed)
+              AND item_id NOT IN (SELECT item_id FROM items)
             UNION SELECT item_id FROM items WHERE ?1 IS NOT NULL AND static_ns != ?1 AND static_ns != 'missing' AND static_ns NOT LIKE 'fallback:%'
          ) ORDER BY item_id LIMIT ?2",
     )?;
@@ -240,6 +242,14 @@ mod tests {
         // an older namespace seen later does not move the setting back
         store_items(&mut c, &[meta(3, "static-1.60.1_70399-forever-us")], 0).unwrap();
         assert_eq!(crate::settings::get_kv(&c, "static_ns").as_deref(), Some("static-1.60.2_70500-forever-us"));
+    }
+
+    #[test]
+    fn missing_ids_only_considers_latest_snapshots() {
+        let c = open_in_memory();
+        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'alliance', 'items', 1, 1, 1), (2, 'alliance', 'items', 2, 2, 1)", []).unwrap();
+        c.execute("INSERT INTO item_aggregates(snapshot_id, item_id, variant_key, quantity, listings) VALUES (1, 9, '', 1, 1), (2, 10, '', 1, 1)", []).unwrap();
+        assert_eq!(missing_item_ids(&c, 100).unwrap(), vec![10]);
     }
 
     #[test]

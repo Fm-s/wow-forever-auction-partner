@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getHealth, onSnapshot, onStatus } from "../api";
+import { debounce } from "../debounce";
 import { AhledgerCredit } from "../components/AhledgerCredit";
 import { Money } from "../components/Money";
 import { tickPosition } from "../timeline";
@@ -26,10 +27,12 @@ export function HealthView({ onOpenItem }: { onOpenItem: (house: House, item: It
         .then((h) => live && (setHealth(h), setError(null)))
         .catch((e) => live && setError(String(e)));
     void load();
-    const a = onSnapshot(() => void load());
-    const b = onStatus(() => void load());
+    const reload = debounce(() => void load(), 1500);
+    const a = onSnapshot(reload);
+    const b = onStatus(reload);
     return () => {
       live = false;
+      reload.cancel();
       void a.then((f) => f());
       void b.then((f) => f());
     };
@@ -129,7 +132,7 @@ export function HealthView({ onOpenItem }: { onOpenItem: (house: House, item: It
             </thead>
             <tbody>
               {health.disagreements.map((d) => (
-                <tr key={`${d.house}-${d.itemId}`} className="clickable" onClick={() => onOpenItem(d.house, { itemId: d.itemId, variantKey: "" })}>
+                <tr key={`${d.house}-${d.itemId}`} className="clickable" onClick={() => onOpenItem(d.house, { itemId: d.itemId, variantKey: d.variantKey })}>
                   <td>{d.name}</td>
                   <td>
                     <span className={`house-dot ${d.house}`} />

@@ -32,6 +32,8 @@ pub struct TimelinePoint {
 pub struct Disagreement {
     pub house: House,
     pub item_id: i64,
+    /// Variant holding the Blizzard minimum (what the row opens).
+    pub variant_key: String,
     pub name: String,
     pub blizzard_min: i64,
     pub ahledger_min: i64,
@@ -74,18 +76,17 @@ fn feed_health(conn: &Connection, source: &str, house: House, feed: &str, now: i
     Ok(FeedHealth { source: source.into(), house, feed: feed.into(), last_success, last_error_at, last_error, last_modified, stale: is_stale(last_modified, now, cadence) })
 }
 
-/// Est. sold/day per item (summed over variants), using the coverage of the feed the item lives in.
+/// Est. sold/day per item (summed over variants) from the 7-day rollups and its feed's coverage.
 fn est_per_item(conn: &Connection, house: House, now: i64) -> rusqlite::Result<HashMap<i64, Option<f64>>> {
+    let from_day = week_start_day(now);
+    let week = rollups_since(conn, house, &from_day, None)?;
     let mut out: HashMap<i64, Option<f64>> = HashMap::new();
     for feed in Feed::ALL {
         let Some((snap, _)) = latest_snapshot(conn, house, feed)? else { continue };
-        let (sold, covered) = sold_in_window(conn, house, feed, now - WEEK)?;
+        let covered = coverage_since(conn, house, feed, &from_day)?;
         let mut by_item: HashMap<i64, i64> = HashMap::new();
         for a in snapshot_aggregates(conn, snap)? {
-            by_item.entry(a.item_id).or_insert(0);
-        }
-        for ((item, _), s) in sold {
-            *by_item.entry(item).or_insert(0) += s;
+            *by_item.entry(a.item_id).or_insert(0) += week.get(&(a.item_id, a.variant_key)).map_or(0, |w| w.1);
         }
         for (item, s) in by_item {
             out.insert(item, per_day(s, covered));
@@ -123,12 +124,21 @@ pub fn health(conn: &Connection, settings: &AppSettings, now: i64) -> rusqlite::
     for house in House::ALL {
         let Some(ahl) = latest_ahledger(conn, house)? else { continue };
         let mins = latest_item_mins(conn, house)?;
-        for (item, &(min, t)) in &mins {
+        for (item, m) in &mins {
             let a = ahl.rows.get(item).and_then(|x| x.0);
-            if let (Some(d), Some(a)) = (delta_pct(Some(min), t, a, ahl.as_of), a)
-                && d.abs() > DISAGREE_PCT {
-                    disagreements.push(Disagreement { house, item_id: *item, name: display_name(info.get(item), *item), blizzard_min: min, ahledger_min: a, delta_pct: d });
-                }
+            if let (Some(d), Some(a)) = (delta_pct(Some(m.min), m.snapshot_t, a, ahl.as_of), a)
+                && d.abs() > DISAGREE_PCT
+            {
+                disagreements.push(Disagreement {
+                    house,
+                    item_id: *item,
+                    variant_key: m.variant_key.clone(),
+                    name: display_name(info.get(item), *item),
+                    blizzard_min: m.min,
+                    ahledger_min: a,
+                    delta_pct: d,
+                });
+            }
         }
         let est = est_per_item(conn, house, now)?;
         for (item, (_, sales)) in &ahl.rows {
@@ -167,6 +177,15 @@ mod tests {
         assert_eq!(h.disagreements.len(), 1);
         assert_eq!((h.disagreements[0].item_id, h.disagreements[0].blizzard_min, h.disagreements[0].ahledger_min), (5, 100, 80));
         assert!((h.disagreements[0].delta_pct - 25.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn disagreement_carries_cheapest_variant() {
+        let mut c = open_in_memory();
+        seed(&mut c, House::Alliance, Feed::Items, NOW - 60, &[li(1, 727, "12718", 257, 1, TimeLeft::Long), li(2, 727, "12721", 7300, 1, TimeLeft::Long)]);
+        ahl(&mut c, "forever.pvp.alliance.us", NOW - 60, &[(727, 200, None)]);
+        let h = health(&c, &AppSettings::default(), NOW).unwrap();
+        assert_eq!(h.disagreements[0].variant_key, "12718");
     }
 
     #[test]

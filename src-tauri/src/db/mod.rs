@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 pub type Db = Arc<Mutex<Connection>>;
 
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("schema.sql"))])
+    Migrations::new(vec![M::up(include_str!("schema.sql")), M::up(include_str!("migration_2.sql"))])
 }
 
 fn prepare(conn: &mut Connection) -> rusqlite::Result<()> {
@@ -42,6 +42,13 @@ mod tests {
         for t in ["feed_snapshots", "item_aggregates", "volume", "raw_listings", "daily_rollups", "ahledger_rows", "items", "source_status", "settings"] {
             assert!(c.query_row("SELECT 1 FROM sqlite_master WHERE name=?1", [t], |_| Ok(())).is_ok(), "{t}");
         }
+    }
+
+    #[test]
+    fn migration_2_adds_coverage_and_ahledger_item_index() {
+        let c = open_in_memory();
+        assert!(c.query_row("SELECT 1 FROM sqlite_master WHERE name='daily_coverage'", [], |_| Ok(())).is_ok());
+        assert!(c.query_row("SELECT 1 FROM sqlite_master WHERE name='idx_ahl_item'", [], |_| Ok(())).is_ok());
     }
 
     #[test]

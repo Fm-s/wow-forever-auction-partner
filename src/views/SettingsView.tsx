@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { getCredentialsStatus, getSettings, runCollectionNow, saveCredentials, saveSettings } from "../api";
+import { getCredentialsStatus, getSettings, onStatus, runCollectionNow, saveCredentials, saveSettings } from "../api";
+import { applySettingsForm } from "../settingsForm";
 import type { AppSettings, CredentialsStatus } from "../types";
 
 const pct = (bps: number) => (bps / 100).toString();
-const bps = (pctText: string) => Math.round(parseFloat(pctText || "0") * 100);
 
 export function SettingsView() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -23,6 +23,11 @@ export function SettingsView() {
       setCadenceMin(String(Math.round(s.cadenceSecs / 60)));
     });
     void getCredentialsStatus().then(setCreds);
+    // pause can also be toggled from the tray; keep the checkbox in step with it
+    const un = onStatus((st) => setSettings((cur) => (cur ? { ...cur, collectionPaused: st.state === "paused" } : cur)));
+    return () => {
+      void un.then((f) => f());
+    };
   }, []);
 
   if (!settings) return <div className="view-empty">Loading settings…</div>;
@@ -32,22 +37,19 @@ export function SettingsView() {
     if (!settings) return;
     setMessage(null);
     try {
-      if (clientId || clientSecret || ahlKey) {
-        if (!clientId || !clientSecret) throw new Error("Enter both the Blizzard client ID and secret to change credentials.");
+      // validate everything before saving anything
+      const form = { cadenceMin, cuts, launchAtLogin: settings.launchAtLogin };
+      applySettingsForm(settings, form);
+      if ((clientId || clientSecret || ahlKey) && (!clientId || !clientSecret)) {
+        throw new Error("Enter both the Blizzard client ID and secret to change credentials.");
+      }
+      if (clientId) {
         await saveCredentials(clientId, clientSecret, ahlKey || null);
         setClientId("");
         setClientSecret("");
         setAhlKey("");
       }
-      const cadence = Math.round(parseFloat(cadenceMin) * 60);
-      if (!(cadence >= 300)) throw new Error("Snapshot cadence must be at least 5 minutes.");
-      const next: AppSettings = {
-        ...settings,
-        cadenceSecs: cadence,
-        cutBpsAlliance: bps(cuts.alliance),
-        cutBpsHorde: bps(cuts.horde),
-        cutBpsBlackwater: bps(cuts.blackwater),
-      };
+      const next = applySettingsForm(await getSettings(), form);
       await saveSettings(next);
       setSettings(next);
       setCreds(await getCredentialsStatus());
@@ -55,6 +57,16 @@ export function SettingsView() {
       setMessage({ kind: "ok", text: "Settings saved. Collecting now." });
     } catch (err) {
       setMessage({ kind: "error", text: String(err instanceof Error ? err.message : err) });
+    }
+  }
+
+  async function togglePause(paused: boolean) {
+    try {
+      const next = { ...(await getSettings()), collectionPaused: paused };
+      await saveSettings(next);
+      setSettings((cur) => (cur ? { ...cur, collectionPaused: paused } : cur));
+    } catch (err) {
+      setMessage({ kind: "error", text: String(err) });
     }
   }
 
@@ -126,8 +138,8 @@ export function SettingsView() {
           Open at login, in the menu bar
         </label>
         <label className="check">
-          <input type="checkbox" checked={settings.collectionPaused} onChange={(e) => setSettings({ ...settings, collectionPaused: e.target.checked })} />
-          Pause collection
+          <input type="checkbox" checked={settings.collectionPaused} onChange={(e) => void togglePause(e.target.checked)} />
+          Pause collection (applies immediately)
         </label>
       </section>
 

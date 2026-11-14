@@ -9,11 +9,13 @@ import type {
   HistoryRange,
   House,
   ItemHistory,
+  MarketRow,
   MarketView,
   SnapshotEvent,
 } from "./types";
 
 export const getMarket = (house: House) => invoke<MarketView>("get_market", { house });
+export const getItemRow = (house: House, itemId: number, variantKey: string) => invoke<MarketRow | null>("get_item_row", { house, itemId, variantKey });
 export const getItemHistory = (house: House, itemId: number, variantKey: string, range: HistoryRange) =>
   invoke<ItemHistory>("get_item_history", { house, itemId, variantKey, range });
 export const getCrossHouse = (itemId: number, variantKey: string) => invoke<CrossHouseRow[]>("get_cross_house", { itemId, variantKey });

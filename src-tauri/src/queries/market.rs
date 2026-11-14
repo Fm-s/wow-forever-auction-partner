@@ -38,26 +38,38 @@ pub struct MarketView {
 
 /// Every item/variant in the house's latest snapshots, with 7-day context and the AHledger comparison.
 pub fn market(conn: &Connection, house: House, settings: &AppSettings, now: i64) -> rusqlite::Result<MarketView> {
+    let (mut rows, as_of, stale_count) = rows(conn, house, settings, now, None)?;
+    rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.variant_key.cmp(&b.variant_key)));
+    Ok(MarketView { house, as_of, partially_stale: stale_count == 1, stale: stale_count == 2, rows })
+}
+
+/// The market row of one item variant (None when it isn't in the latest snapshots).
+pub fn item_row(conn: &Connection, house: House, item_id: i64, variant_key: &str, settings: &AppSettings, now: i64) -> rusqlite::Result<Option<MarketRow>> {
+    Ok(rows(conn, house, settings, now, Some((item_id, variant_key)))?.0.into_iter().next())
+}
+
+/// 7-day figures come from daily rollups + coverage, so the cost doesn't grow with snapshot count.
+fn rows(conn: &Connection, house: House, settings: &AppSettings, now: i64, only: Option<(i64, &str)>) -> rusqlite::Result<(Vec<MarketRow>, Option<i64>, usize)> {
     let info = items_info(conn)?;
     let ahl = latest_ahledger(conn, house)?;
     let item_mins = latest_item_mins(conn, house)?;
-    let from = now - WEEK;
+    let from_day = week_start_day(now);
+    let week = rollups_since(conn, house, &from_day, only)?;
     let mut rows = Vec::new();
-    let mut stale_flags = Vec::new();
+    let mut stale_count = 0;
     let mut as_of: Option<i64> = None;
     for feed in Feed::ALL {
         let latest = latest_snapshot(conn, house, feed)?;
-        stale_flags.push(is_stale(latest.map(|x| x.1), now, settings.cadence_secs));
+        if is_stale(latest.map(|x| x.1), now, settings.cadence_secs) {
+            stale_count += 1;
+        }
         let Some((snap_id, lm)) = latest else { continue };
         as_of = Some(as_of.map_or(lm, |a: i64| a.max(lm)));
-        let medians = window_medians(conn, house, feed, from)?;
-        let (sold, covered) = sold_in_window(conn, house, feed, from)?;
-        for a in snapshot_aggregates(conn, snap_id)? {
+        let covered = coverage_since(conn, house, feed, &from_day)?;
+        for a in snapshot_aggregates_for(conn, snap_id, only)? {
             let key: Key = (a.item_id, a.variant_key.clone());
-            let median_7d = medians.get(&key).and_then(|(ms, first, last)| {
-                let mut ms = ms.clone();
-                (last - first >= 86400).then(|| median_lower(&mut ms)).flatten()
-            });
+            let (medians, sold) = week.get(&key).cloned().unwrap_or_default();
+            let median_7d = if covered >= 86400 { median_lower(&mut medians.clone()) } else { None };
             let trend_pct = match (a.median, median_7d) {
                 (Some(m), Some(m7)) if m7 > 0 => Some((m - m7) as f64 / m7 as f64 * 100.0),
                 _ => None,
@@ -65,7 +77,7 @@ pub fn market(conn: &Connection, house: House, settings: &AppSettings, now: i64)
             let (ahl_min, ahl_delta_pct) = match &ahl {
                 Some(t) => {
                     let ahl_min = t.rows.get(&a.item_id).and_then(|x| x.0);
-                    let blizz = item_mins.get(&a.item_id).map(|x| x.0);
+                    let blizz = item_mins.get(&a.item_id).map(|x| x.min);
                     (ahl_min, delta_pct(blizz, lm, ahl_min, t.as_of))
                 }
                 None => (None, None),
@@ -82,7 +94,7 @@ pub fn market(conn: &Connection, house: House, settings: &AppSettings, now: i64)
                 median: a.median,
                 quantity: a.quantity,
                 median_7d,
-                est_sold_per_day: per_day(sold.get(&key).copied().unwrap_or(0), covered),
+                est_sold_per_day: per_day(sold, covered),
                 trend_pct,
                 ahl_min,
                 ahl_delta_pct,
@@ -91,9 +103,7 @@ pub fn market(conn: &Connection, house: House, settings: &AppSettings, now: i64)
             });
         }
     }
-    rows.sort_by(|a, b| a.name.cmp(&b.name).then(a.variant_key.cmp(&b.variant_key)));
-    let stale_count = stale_flags.iter().filter(|s| **s).count();
-    Ok(MarketView { house, as_of, partially_stale: stale_count == 1, stale: stale_count == 2, rows })
+    Ok((rows, as_of, stale_count))
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -200,6 +210,29 @@ mod tests {
     }
 
     #[test]
+    fn median_7d_survives_without_old_aggregates() {
+        // 7-day figures come from daily rollups, not a scan of every snapshot's aggregates
+        let mut c = open_in_memory();
+        let t0 = NOW - 30 * H;
+        for k in 0..30i64 {
+            seed(&mut c, House::Alliance, Feed::Items, t0 + k * H, &[li(k, 5, "", 100, 1, TimeLeft::Long)]);
+        }
+        c.execute("DELETE FROM item_aggregates WHERE snapshot_id != (SELECT MAX(id) FROM feed_snapshots)", []).unwrap();
+        let v = market(&c, House::Alliance, &AppSettings::default(), NOW).unwrap();
+        assert_eq!(row(&v, 5, "").median_7d, Some(100));
+        assert!(row(&v, 5, "").est_sold_per_day.is_some());
+    }
+
+    #[test]
+    fn item_row_returns_one_variant() {
+        let mut c = open_in_memory();
+        seed(&mut c, House::Alliance, Feed::Items, NOW - 60, &[li(1, 727, "12718", 257, 1, TimeLeft::Long), li(2, 727, "12721", 7300, 1, TimeLeft::Long)]);
+        let r = item_row(&c, House::Alliance, 727, "12718", &AppSettings::default(), NOW).unwrap().unwrap();
+        assert_eq!(r.min_price, Some(257));
+        assert!(item_row(&c, House::Alliance, 727, "999", &AppSettings::default(), NOW).unwrap().is_none());
+    }
+
+    #[test]
     fn ahl_delta_only_when_close_in_time() {
         let mut c = open_in_memory();
         seed(&mut c, House::Alliance, Feed::Items, NOW - 60, &[li(1, 5, "", 100, 1, TimeLeft::Long)]);
@@ -263,5 +296,38 @@ mod tests {
         let rows = cross_house(&c, 5, "", &AppSettings::default()).unwrap();
         let cuts: Vec<_> = rows.iter().map(|r| (r.house, r.cut_bps, r.min_price)).collect();
         assert_eq!(cuts, vec![(House::Alliance, 500, Some(100)), (House::Horde, 500, Some(101)), (House::Blackwater, 1500, Some(102))]);
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    /// Timing check on a synthetic week: cargo test --release bench_week -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn bench_week_of_snapshots() {
+        use crate::domain::{Feed, House, Listing, TimeLeft};
+        let mut c = crate::db::open_in_memory();
+        let now = 1794614400 + 8 * 86400;
+        let t0 = now - 7 * 86400;
+        let start = std::time::Instant::now();
+        for k in 0..(7 * 24) {
+            let t = t0 + k * 3600;
+            let ls: Vec<Listing> = (0..14_000i64)
+                .map(|i| Listing { auction_id: k * 1_000_000 + i, item_id: i / 2, variant_key: (i % 2).to_string(), unit_price: Some(100 + (i + k) % 50), quantity: 1 + i % 5, time_left: TimeLeft::Long })
+                .collect();
+            crate::processing::ingest::ingest_feed(&mut c, House::Alliance, Feed::Items, t, t, &ls, 3600).unwrap();
+        }
+        println!("seeded 168 snapshots x 14k in {:?}", start.elapsed());
+        let s = crate::settings::AppSettings::default();
+        let time = |label: &str, f: &dyn Fn()| {
+            let t = std::time::Instant::now();
+            f();
+            println!("{label}: {:?}", t.elapsed());
+        };
+        time("market()", &|| assert_eq!(super::market(&c, House::Alliance, &s, now).unwrap().rows.len(), 14_000));
+        time("item_row()", &|| assert!(super::item_row(&c, House::Alliance, 42, "0", &s, now).unwrap().is_some()));
+        time("item_history(7d)", &|| { crate::queries::history::item_history(&c, House::Alliance, 42, "0", crate::queries::history::HistoryRange::D7, now).unwrap(); });
+        time("health()", &|| { crate::queries::health::health(&c, &s, now).unwrap(); });
+        time("missing_item_ids()", &|| { crate::blizzard::static_data::missing_item_ids(&c, 2000).unwrap(); });
     }
 }

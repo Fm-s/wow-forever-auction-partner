@@ -51,7 +51,8 @@ export interface HistoryPoint {
 
 export interface ItemHistory {
   points: HistoryPoint[];
-  estSoldDaily: [string, number][];
+  /** est. units sold per day, normalised by that day's coverage; null when under 6 h covered */
+  estSoldDaily: [string, number | null][];
   volatility7d: number | null;
   ahledger: [number, number | null][];
 }
@@ -77,6 +78,7 @@ export interface TimelinePoint {
 export interface Disagreement {
   house: House;
   itemId: number;
+  variantKey: string;
   name: string;
   blizzardMin: number;
   ahledgerMin: number;
