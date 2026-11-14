@@ -1,51 +1,79 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useEffect, useState } from "react";
+import { getCollectorStatus, onStatus } from "./api";
+import { HouseSelect } from "./components/HouseSelect";
+import { hhmm } from "./time";
+import type { CollectorStatus, House, ItemRef } from "./types";
+import { HealthView } from "./views/HealthView";
+import { ItemView } from "./views/ItemView";
+import { MarketView } from "./views/MarketView";
+import { SettingsView } from "./views/SettingsView";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+type View = "market" | "item" | "health" | "settings";
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+function statusLabel(s: CollectorStatus | null): string {
+  if (!s) return "Connecting…";
+  switch (s.state) {
+    case "running":
+      return s.lastNewSnapshotAt ? `Updated ${hhmm(s.lastNewSnapshotAt)}` : "Waiting for first snapshot";
+    case "paused":
+      return "Collection paused";
+    case "starting":
+      return "Starting…";
+    default:
+      return s.message ?? s.state;
   }
-
-  return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
-  );
 }
 
-export default App;
+export default function App() {
+  const [view, setView] = useState<View>("market");
+  const [house, setHouse] = useState<House>("alliance");
+  const [item, setItem] = useState<ItemRef | null>(null);
+  const [status, setStatus] = useState<CollectorStatus | null>(null);
+
+  useEffect(() => {
+    void getCollectorStatus().then(setStatus);
+    const un = onStatus(setStatus);
+    return () => {
+      void un.then((f) => f());
+    };
+  }, []);
+
+  const openItem = (h: House, ref: ItemRef) => {
+    setHouse(h);
+    setItem(ref);
+    setView("item");
+  };
+
+  const nav: { id: View; label: string }[] = [
+    { id: "market", label: "Market" },
+    { id: "health", label: "Sources" },
+    { id: "settings", label: "Settings" },
+  ];
+  const navActive = view === "item" ? "market" : view;
+
+  return (
+    <div className={`app house-theme-${house}`}>
+      <header className="topbar">
+        <span className="brand">Auctioneer</span>
+        <HouseSelect value={house} onChange={setHouse} />
+        <nav>
+          {nav.map((n) => (
+            <button key={n.id} className={navActive === n.id ? "active" : ""} aria-current={navActive === n.id ? "page" : undefined} onClick={() => setView(n.id)}>
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <span className={`status status-${status?.state ?? "starting"}`} title={status?.message ?? undefined}>
+          {statusLabel(status)}
+        </span>
+      </header>
+      <div className="house-band" aria-hidden="true" />
+      <main>
+        {view === "market" && <MarketView house={house} onOpenItem={(ref) => openItem(house, ref)} />}
+        {view === "item" && item && <ItemView house={house} item={item} onBack={() => setView("market")} />}
+        {view === "health" && <HealthView onOpenItem={openItem} />}
+        {view === "settings" && <SettingsView />}
+      </main>
+    </div>
+  );
+}
