@@ -62,7 +62,7 @@ mod tests {
             .await;
         let c = AhledgerClient::new(server.base_url(), Some("ahlk_x".into()));
         assert!(matches!(c.fetch_pricetable("forever.pvp.alliance.us", Some("\"abc\"")).await.unwrap(), TableFetch::NotModified));
-        assert_eq!(m.hits_async().await, 1);
+        assert_eq!(m.calls_async().await, 1);
     }
 
     #[tokio::test]
@@ -101,7 +101,7 @@ mod tests {
             .await;
         let c = AhledgerClient::new(server.base_url(), None);
         assert!(c.fetch_pricetable("forever.pvp.horde.us", None).await.is_ok());
-        assert_eq!(with_auth.hits_async().await, 0);
+        assert_eq!(with_auth.calls_async().await, 0);
     }
 
     #[tokio::test]

@@ -17,7 +17,7 @@ use tokio::sync::{Mutex, Notify};
 
 pub const POLL_SECS: i64 = 300;
 pub const AHLEDGER_MIN_SECS: i64 = 900;
-const METADATA_BATCH: usize = 500;
+const METADATA_BATCH: usize = 2000;
 const WAKE_JUMP_SECS: i64 = 600;
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -454,7 +454,7 @@ mod tests {
         assert_eq!(report.new_snapshots, 6, "{:?}", report.errors);
         assert_eq!(h.events.lock().unwrap().iter().filter(|e| e.starts_with("snapshot:")).count(), 6);
         assert_eq!(q(&h.db, "SELECT COUNT(*) FROM feed_snapshots"), 6);
-        assert_eq!(ahl.hits_async().await, 2, "alliance + horde tables, no blackwater");
+        assert_eq!(ahl.calls_async().await, 2, "alliance + horde tables, no blackwater");
         assert_eq!(q(&h.db, "SELECT COUNT(DISTINCT market) FROM ahledger_rows"), 1, "fixture table names one market");
         assert_eq!(h.collector.status().state, "running");
     }
@@ -470,7 +470,7 @@ mod tests {
         let nm = h.server.mock_async(|w, t| { w.method(GET).path_prefix("/data/wow/ruleset/").header("if-modified-since", LM); t.status(304); }).await;
         let report = h.collector.run_cycle(NOW + 300).await;
         assert_eq!(report.new_snapshots, 0);
-        assert_eq!(nm.hits_async().await, 6);
+        assert_eq!(nm.calls_async().await, 6);
         assert_eq!(q(&h.db, "SELECT COUNT(*) FROM feed_snapshots"), 6);
     }
 
@@ -516,7 +516,7 @@ mod tests {
         h.collector.set_paused(true);
         let report = h.collector.run_cycle(NOW).await;
         assert_eq!(report.new_snapshots, 0);
-        assert_eq!(items.hits_async().await + comm.hits_async().await, 0);
+        assert_eq!(items.calls_async().await + comm.calls_async().await, 0);
         assert_eq!(h.collector.status().state, "paused");
     }
 

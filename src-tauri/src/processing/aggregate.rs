@@ -32,7 +32,9 @@ fn percentile(sorted: &[(i64, i64)], total_units: i64, p: f64) -> Option<i64> {
 /// Per (item_id, variant_key) stats for one snapshot, sorted by key.
 /// Bid-only listings count toward quantity/listings but not prices.
 pub fn aggregate(listings: &[Listing]) -> Vec<ItemAggregate> {
-    let mut groups: BTreeMap<(i64, &str), (Vec<(i64, i64)>, i64, i64)> = BTreeMap::new();
+    // (priced (unit_price, quantity) pairs, total quantity, listing count)
+    type Group = (Vec<(i64, i64)>, i64, i64);
+    let mut groups: BTreeMap<(i64, &str), Group> = BTreeMap::new();
     for l in listings {
         let g = groups.entry((l.item_id, l.variant_key.as_str())).or_default();
         if let Some(p) = l.unit_price {

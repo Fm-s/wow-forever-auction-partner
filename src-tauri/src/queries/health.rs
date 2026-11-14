@@ -62,7 +62,8 @@ const DISAGREE_LIMIT: usize = 200;
 const CALIBRATION_LIMIT: usize = 50;
 
 fn feed_health(conn: &Connection, source: &str, house: House, feed: &str, now: i64, cadence: i64) -> rusqlite::Result<FeedHealth> {
-    let row: Option<(Option<i64>, Option<i64>, Option<String>, Option<i64>)> = conn
+    type StatusRow = (Option<i64>, Option<i64>, Option<String>, Option<i64>);
+    let row: Option<StatusRow> = conn
         .query_row(
             "SELECT last_success, last_error_at, last_error, last_modified FROM source_status WHERE source = ?1 AND house = ?2 AND feed = ?3",
             params![source, house.as_str(), feed],
@@ -124,11 +125,10 @@ pub fn health(conn: &Connection, settings: &AppSettings, now: i64) -> rusqlite::
         let mins = latest_item_mins(conn, house)?;
         for (item, &(min, t)) in &mins {
             let a = ahl.rows.get(item).and_then(|x| x.0);
-            if let (Some(d), Some(a)) = (delta_pct(Some(min), t, a, ahl.as_of), a) {
-                if d.abs() > DISAGREE_PCT {
+            if let (Some(d), Some(a)) = (delta_pct(Some(min), t, a, ahl.as_of), a)
+                && d.abs() > DISAGREE_PCT {
                     disagreements.push(Disagreement { house, item_id: *item, name: display_name(info.get(item), *item), blizzard_min: min, ahledger_min: a, delta_pct: d });
                 }
-            }
         }
         let est = est_per_item(conn, house, now)?;
         for (item, (_, sales)) in &ahl.rows {

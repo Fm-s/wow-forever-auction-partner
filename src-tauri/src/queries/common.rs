@@ -10,6 +10,8 @@ pub const COMPARE_WINDOW_SECS: i64 = 3600;
 pub const MIN_COVERAGE_SECS: i64 = 6 * 3600;
 
 pub type Key = (i64, String);
+/// (per-snapshot medians, first snapshot time, last snapshot time)
+pub type MedianWindow = (Vec<i64>, i64, i64);
 
 pub fn latest_snapshot(conn: &Connection, house: House, feed: Feed) -> rusqlite::Result<Option<(i64, i64)>> {
     conn.query_row(
@@ -69,12 +71,12 @@ pub fn snapshot_aggregates(conn: &Connection, snapshot_id: i64) -> rusqlite::Res
 }
 
 /// Per (item, variant): per-snapshot medians since `from`, with the first and last snapshot time.
-pub fn window_medians(conn: &Connection, house: House, feed: Feed, from: i64) -> rusqlite::Result<HashMap<Key, (Vec<i64>, i64, i64)>> {
+pub fn window_medians(conn: &Connection, house: House, feed: Feed, from: i64) -> rusqlite::Result<HashMap<Key, MedianWindow>> {
     let mut st = conn.prepare(
         "SELECT a.item_id, a.variant_key, a.median, s.last_modified FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
          WHERE s.house = ?1 AND s.feed = ?2 AND s.last_modified >= ?3 AND a.median IS NOT NULL",
     )?;
-    let mut out: HashMap<Key, (Vec<i64>, i64, i64)> = HashMap::new();
+    let mut out: HashMap<Key, MedianWindow> = HashMap::new();
     let mut rows = st.query(params![house.as_str(), feed.as_str(), from])?;
     while let Some(r) = rows.next()? {
         let key: Key = (r.get(0)?, r.get(1)?);

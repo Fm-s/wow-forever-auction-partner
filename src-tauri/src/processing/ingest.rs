@@ -54,11 +54,10 @@ pub fn ingest_feed(
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
-    if let Some((_, prev_lm)) = prev {
-        if last_modified <= prev_lm {
+    if let Some((_, prev_lm)) = prev
+        && last_modified <= prev_lm {
             return Ok(IngestOutcome::Duplicate);
         }
-    }
     let dt = prev.map(|(_, lm)| last_modified - lm);
     let gap = dt.is_some_and(|d| is_gap(d, cadence_secs));
     tx.execute(
@@ -109,7 +108,8 @@ fn update_rollups(tx: &Transaction, house: House, feed: Feed, t: i64, touched: &
     let (day, start) = utc_day(t);
     let end = start + 86400;
     // per (item, variant): (mins, medians, quantities, est_sold)
-    let mut acc: BTreeMap<(i64, String), (Vec<i64>, Vec<i64>, Vec<i64>, i64)> = BTreeMap::new();
+    type DayAcc = (Vec<i64>, Vec<i64>, Vec<i64>, i64);
+    let mut acc: BTreeMap<(i64, String), DayAcc> = BTreeMap::new();
     {
         let mut st = tx.prepare_cached(
             "SELECT a.item_id, a.variant_key, a.min_price, a.median, a.quantity FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id

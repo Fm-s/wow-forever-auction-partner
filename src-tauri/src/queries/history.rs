@@ -17,7 +17,7 @@ pub enum HistoryRange {
 }
 
 impl HistoryRange {
-    fn from_ts(self, now: i64) -> Option<i64> {
+    fn start_ts(self, now: i64) -> Option<i64> {
         match self {
             HistoryRange::H24 => Some(now - 86400),
             HistoryRange::D7 => Some(now - WEEK),
@@ -50,7 +50,7 @@ pub struct ItemHistory {
 /// Price/quantity series for one item variant in one house. Snapshots where it isn't listed show
 /// quantity 0 and no price; a gap snapshot is preceded by an all-None point so charts break there.
 pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: &str, range: HistoryRange, now: i64) -> rusqlite::Result<ItemHistory> {
-    let from = range.from_ts(now);
+    let from = range.start_ts(now);
     let feed: Option<String> = conn
         .query_row(
             "SELECT s.feed FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id

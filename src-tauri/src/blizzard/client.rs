@@ -78,13 +78,11 @@ impl BlizzardClient {
 
     async fn token(&self, force_refresh: bool) -> Result<String, FetchError> {
         let mut guard = self.token.lock().await;
-        if !force_refresh {
-            if let Some((tok, expires)) = guard.as_ref() {
-                if Instant::now() < *expires {
+        if !force_refresh
+            && let Some((tok, expires)) = guard.as_ref()
+                && Instant::now() < *expires {
                     return Ok(tok.clone());
                 }
-            }
-        }
         #[derive(serde::Deserialize)]
         struct TokenResp {
             access_token: String,
@@ -223,7 +221,7 @@ mod tests {
             })
             .await;
         assert!(matches!(client.fetch_feed(House::Alliance, Feed::Items, Some(LM_UNIX)).await.unwrap(), FeedFetch::NotModified));
-        assert_eq!(m.hits_async().await, 1);
+        assert_eq!(m.calls_async().await, 1);
     }
 
     #[tokio::test]
@@ -237,7 +235,7 @@ mod tests {
             })
             .await;
         client.fetch_feed(House::Horde, Feed::Commodities, None).await.unwrap();
-        assert_eq!(m.hits_async().await, 1);
+        assert_eq!(m.calls_async().await, 1);
     }
 
     #[tokio::test]
@@ -265,7 +263,7 @@ mod tests {
             .await;
         client.fetch_feed(House::Alliance, Feed::Items, Some(LM_UNIX)).await.unwrap();
         client.fetch_feed(House::Alliance, Feed::Items, Some(LM_UNIX)).await.unwrap();
-        assert_eq!(tok.hits_async().await, 1);
+        assert_eq!(tok.calls_async().await, 1);
     }
 
     #[tokio::test]
@@ -279,8 +277,8 @@ mod tests {
             })
             .await;
         assert!(matches!(client.fetch_feed(House::Alliance, Feed::Items, None).await, Err(FetchError::Unauthorized)));
-        assert_eq!(tok.hits_async().await, 2);
-        assert_eq!(api.hits_async().await, 2);
+        assert_eq!(tok.calls_async().await, 2);
+        assert_eq!(api.calls_async().await, 2);
     }
 
     #[tokio::test]

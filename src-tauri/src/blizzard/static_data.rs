@@ -1,10 +1,16 @@
-use crate::blizzard::client::BlizzardClient;
+use crate::blizzard::client::{BlizzardClient, FetchError};
 use crate::settings::{get_kv, set_kv};
 use futures::stream::{self, StreamExt};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
 pub const NAMESPACE_STATIC: &str = "static-forever-us";
+/// Forever's static data lacks some vanilla items (e.g. random-suffix gear); Classic Era has them.
+pub const NAMESPACE_FALLBACK: &str = "static-classic1x-us";
+/// `static_ns` of items fetched from the fallback namespace is prefixed with this.
+pub const FALLBACK_PREFIX: &str = "fallback:";
+/// `static_ns` of placeholder rows for items found in neither namespace.
+pub const NS_MISSING: &str = "missing";
 const CONCURRENCY: usize = 10;
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -38,17 +44,33 @@ pub fn missing_item_ids(conn: &Connection, limit: usize) -> rusqlite::Result<Vec
     let mut st = conn.prepare(
         "SELECT item_id FROM (
             SELECT DISTINCT item_id FROM item_aggregates WHERE item_id NOT IN (SELECT item_id FROM items)
-            UNION SELECT item_id FROM items WHERE ?1 IS NOT NULL AND static_ns != ?1
+            UNION SELECT item_id FROM items WHERE ?1 IS NOT NULL AND static_ns != ?1 AND static_ns != 'missing' AND static_ns NOT LIKE 'fallback:%'
          ) ORDER BY item_id LIMIT ?2",
     )?;
     let rows = st.query_map(params![current, limit as i64], |r| r.get(0))?;
     rows.collect()
 }
 
-async fn fetch_one(client: &BlizzardClient, id: i64) -> Option<ItemMeta> {
-    let item = client.get_json(&format!("/data/wow/item/{id}?namespace={NAMESPACE_STATIC}&locale=en_US")).await.ok()?;
-    let name = item["name"].as_str()?.to_string();
-    let static_ns = item["_links"]["self"]["href"].as_str().and_then(namespace_from_href).unwrap_or_else(|| NAMESPACE_STATIC.to_string());
+enum Fetched {
+    Found(Box<ItemMeta>),
+    NotFound,
+    Failed,
+}
+
+async fn fetch_one(client: &BlizzardClient, id: i64) -> Fetched {
+    let mut item = None;
+    let mut fallback = false;
+    for (ns, is_fallback) in [(NAMESPACE_STATIC, false), (NAMESPACE_FALLBACK, true)] {
+        match client.get_json(&format!("/data/wow/item/{id}?namespace={ns}&locale=en_US")).await {
+            Ok(v) => {
+                item = Some(v);
+                fallback = is_fallback;
+                break;
+            }
+            Err(FetchError::Status(404)) => continue,
+            Err(_) => return Fetched::Failed,
+        }
+    }
     let icon_url = match client.get_json(&format!("/data/wow/media/item/{id}?namespace={NAMESPACE_STATIC}&locale=en_US")).await {
         Ok(media) => media["assets"]
             .as_array()
@@ -57,8 +79,18 @@ async fn fetch_one(client: &BlizzardClient, id: i64) -> Option<ItemMeta> {
             .map(str::to_string),
         Err(_) => None,
     };
+    let Some(item) = item else {
+        return if icon_url.is_some() { Fetched::Found(Box::new(placeholder(id, icon_url))) } else { Fetched::NotFound };
+    };
+    let Some(name) = item["name"].as_str().map(str::to_string) else { return Fetched::Failed };
+    let resolved = item["_links"]["self"]["href"].as_str().and_then(namespace_from_href);
+    let static_ns = match (fallback, resolved) {
+        (false, Some(ns)) => ns,
+        (false, None) => NAMESPACE_STATIC.to_string(),
+        (true, ns) => format!("{FALLBACK_PREFIX}{}", ns.unwrap_or_else(|| NAMESPACE_FALLBACK.to_string())),
+    };
     let s = |v: &serde_json::Value| v.as_str().map(str::to_string);
-    Some(ItemMeta {
+    Fetched::Found(Box::new(ItemMeta {
         item_id: id,
         name,
         quality: s(&item["quality"]["name"]),
@@ -70,13 +102,36 @@ async fn fetch_one(client: &BlizzardClient, id: i64) -> Option<ItemMeta> {
         purchase_quantity: item["purchase_quantity"].as_i64(),
         sell_price: item["sell_price"].as_i64(),
         static_ns,
-    })
+    }))
 }
 
-/// Fetches item + media metadata, 10 at a time; items that fail are skipped (retried next cycle).
+fn placeholder(id: i64, icon_url: Option<String>) -> ItemMeta {
+    ItemMeta {
+        item_id: id,
+        name: format!("Item #{id}"),
+        quality: None,
+        item_class: None,
+        item_subclass: None,
+        level: None,
+        icon_url,
+        purchase_price: None,
+        purchase_quantity: None,
+        sell_price: None,
+        static_ns: NS_MISSING.to_string(),
+    }
+}
+
+/// Fetches item + media metadata, 10 at a time. Forever 404s fall back to Classic Era; items found in
+/// neither get a placeholder row (not refetched); network/other failures are skipped and retried next cycle.
 pub async fn fetch_items(client: &BlizzardClient, ids: &[i64]) -> Vec<ItemMeta> {
     stream::iter(ids.iter().copied())
-        .map(|id| fetch_one(client, id))
+        .map(|id| async move {
+            match fetch_one(client, id).await {
+                Fetched::Found(m) => Some(*m),
+                Fetched::NotFound => Some(placeholder(id, None)),
+                Fetched::Failed => None,
+            }
+        })
         .buffer_unordered(CONCURRENCY)
         .filter_map(|x| async move { x })
         .collect()
@@ -98,7 +153,8 @@ pub fn store_items(conn: &mut Connection, items: &[ItemMeta], now: i64) -> rusql
             st.execute(params![m.item_id, m.name, m.quality, m.item_class, m.item_subclass, m.level, m.icon_url, m.purchase_price, m.purchase_quantity, m.sell_price, m.static_ns, now])?;
         }
     }
-    if let Some(newest) = items.iter().map(|m| m.static_ns.as_str()).max_by_key(|ns| ns_build(ns)) {
+    let forever_ns = items.iter().map(|m| m.static_ns.as_str()).filter(|ns| ns.starts_with("static-") && ns.ends_with("-forever-us"));
+    if let Some(newest) = forever_ns.max_by_key(|ns| ns_build(ns)) {
         let current = get_kv(&tx, "static_ns");
         if current.as_deref().is_none_or(|c| ns_build(newest) > ns_build(c)) {
             set_kv(&tx, "static_ns", newest)?;
@@ -124,10 +180,10 @@ mod tests {
         server.mock_async(|when, then| { when.method(POST).path("/token"); then.status(200).json_body(serde_json::json!({"access_token":"t","expires_in":3600})); }).await;
         server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/2589").query_param("namespace", "static-forever-us"); then.status(200).body(include_str!("../../tests/fixtures/item_2589.json")); }).await;
         server.mock_async(|when, then| { when.method(GET).path("/data/wow/media/item/2589"); then.status(200).body(include_str!("../../tests/fixtures/media_2589.json")); }).await;
-        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/999"); then.status(404); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/999"); then.status(500); }).await;
         let client = BlizzardClient::new(BlizzardConfig { api_base: server.base_url(), token_url: server.url("/token"), client_id: "a".into(), client_secret: "b".into() });
         let items = fetch_items(&client, &[2589, 999]).await;
-        assert_eq!(items.len(), 1, "per-item errors are skipped");
+        assert_eq!(items.len(), 1, "server errors are skipped (retried next cycle)");
         let m = &items[0];
         assert_eq!(m.name, "Linen Cloth");
         assert_eq!(m.quality.as_deref(), Some("Common"));
@@ -136,6 +192,33 @@ mod tests {
         assert_eq!((m.purchase_price, m.purchase_quantity, m.sell_price), (Some(55), Some(1), Some(13)));
         assert_eq!(m.static_ns, "static-1.60.1_70399-forever-us");
         assert_eq!(m.icon_url.as_deref(), Some("https://render.worldofwarcraft.com/forever-us/icons/56/132889.jpg"));
+    }
+
+    #[tokio::test]
+    async fn fetch_item_falls_back_to_classic_namespace() {
+        let server = MockServer::start_async().await;
+        server.mock_async(|when, then| { when.method(POST).path("/token"); then.status(200).json_body(serde_json::json!({"access_token":"t","expires_in":3600})); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/727").query_param("namespace", "static-forever-us"); then.status(404); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/727").query_param("namespace", "static-classic1x-us");
+            then.status(200).json_body(serde_json::json!({"id":727,"name":"Notched Shortsword","quality":{"name":"Uncommon"},"item_class":{"name":"Weapon"},"_links":{"self":{"href":"https://x/data/wow/item/727?namespace=static-1.15.8_1-classic1x-us"}}})); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/media/item/727"); then.status(200).json_body(serde_json::json!({"assets":[{"key":"icon","value":"https://icon/727.jpg"}]})); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/31337"); then.status(404); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/media/item/31337"); then.status(404); }).await;
+        let client = BlizzardClient::new(BlizzardConfig { api_base: server.base_url(), token_url: server.url("/token"), client_id: "a".into(), client_secret: "b".into() });
+        let mut items = fetch_items(&client, &[727, 31337]).await;
+        items.sort_by_key(|m| m.item_id);
+        assert_eq!(items[0].name, "Notched Shortsword");
+        assert_eq!(items[0].static_ns, "fallback:static-1.15.8_1-classic1x-us");
+        assert_eq!(items[0].icon_url.as_deref(), Some("https://icon/727.jpg"));
+        assert_eq!((items[1].item_id, items[1].name.as_str(), items[1].static_ns.as_str()), (31337, "Item #31337", NS_MISSING));
+    }
+
+    #[test]
+    fn fallback_and_missing_items_are_not_refetched_or_advance_namespace() {
+        let mut c = open_in_memory();
+        store_items(&mut c, &[meta(1, "static-1.60.1_70399-forever-us"), meta(2, "fallback:static-1.15.8_99999-classic1x-us"), meta(3, NS_MISSING)], 0).unwrap();
+        assert_eq!(crate::settings::get_kv(&c, "static_ns").as_deref(), Some("static-1.60.1_70399-forever-us"));
+        assert!(missing_item_ids(&c, 100).unwrap().is_empty());
     }
 
     #[test]
