@@ -63,7 +63,7 @@ export function SettingsView() {
       <section>
         <h2>Blizzard API</h2>
         <p className="hint">
-          {creds?.blizzardSet ? "Credentials are saved in your Keychain. Enter new ones to replace them." : "No credentials yet. Create a client at develop.battle.net."}
+          {creds?.blizzardSet ? "Blizzard credentials are set. Enter new ones to replace them." : "No credentials yet. Create a client at develop.battle.net."}
         </p>
         <label>
           Client ID
