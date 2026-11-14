@@ -52,6 +52,9 @@ def request(url, token, method, ims):
             return r.status, r.headers.get("Last-Modified")
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get("Last-Modified") if e.headers else None
+    except (urllib.error.URLError, OSError) as e:
+        print(f"network error: {e}", file=sys.stderr, flush=True)
+        return "neterr", None
 
 
 def to_utc(http_date):
@@ -64,7 +67,13 @@ def main():
     ap.add_argument("--interval", type=int, default=300)
     args = ap.parse_args()
     env = read_env()
-    token = get_token(env)
+    token = None
+    while token is None:
+        try:
+            token = get_token(env)
+        except (urllib.error.URLError, OSError) as e:
+            print(f"token error: {e}", file=sys.stderr, flush=True)
+            time.sleep(60)
     last = {}
     method = {}
     new_file = not os.path.exists(CSV_PATH)
@@ -80,7 +89,10 @@ def main():
                     m = method.get(key, "HEAD")
                     status, lm = request(feed_url(house, feed), token, m, last.get(key))
                     if status == 401:
-                        token = get_token(env)
+                        try:
+                            token = get_token(env)
+                        except (urllib.error.URLError, OSError):
+                            pass
                         status, lm = request(feed_url(house, feed), token, m, last.get(key))
                     if m == "HEAD" and status not in (200, 304):
                         method[key] = m = "GET"
