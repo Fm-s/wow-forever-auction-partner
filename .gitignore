@@ -1,0 +1,7 @@
+.env
+node_modules/
+dist/
+src-tauri/target/
+tools/cadence.csv
+.DS_Store
+.superpowers/
