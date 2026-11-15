@@ -1,4 +1,4 @@
-use crate::domain::House;
+use crate::domain::{Faction, House, Realm, RealmType, Region};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,10 @@ pub struct AppSettings {
     pub cut_bps_blackwater: i64,
     pub launch_at_login: bool,
     pub collection_paused: bool,
+    pub region: Region,
+    pub realm_type: RealmType,
+    /// First-launch setup (realm + credentials) finished; nothing is collected before.
+    pub setup_done: bool,
 }
 
 impl Default for AppSettings {
@@ -25,17 +29,25 @@ impl Default for AppSettings {
             cut_bps_blackwater: 1500,
             launch_at_login: true,
             collection_paused: false,
+            region: Region::Us,
+            realm_type: RealmType::Pvp,
+            setup_done: false,
         }
     }
 }
 
 impl AppSettings {
     pub fn cut_bps(&self, h: House) -> i64 {
-        match h {
-            House::Alliance => self.cut_bps_alliance,
-            House::Horde => self.cut_bps_horde,
-            House::Blackwater => self.cut_bps_blackwater,
+        match h.faction {
+            Faction::Alliance => self.cut_bps_alliance,
+            Faction::Horde => self.cut_bps_horde,
+            Faction::Blackwater => self.cut_bps_blackwater,
         }
+    }
+
+    /// The realm being tracked.
+    pub fn realm(&self) -> Realm {
+        Realm { region: self.region, kind: self.realm_type }
     }
 }
 

@@ -17,7 +17,7 @@ pub type MedianWindow = (Vec<i64>, i64, i64);
 pub fn latest_snapshot(conn: &Connection, house: House, feed: Feed) -> rusqlite::Result<Option<(i64, i64)>> {
     conn.query_row(
         "SELECT id, last_modified FROM feed_snapshots WHERE house = ?1 AND feed = ?2 ORDER BY last_modified DESC LIMIT 1",
-        params![house.as_str(), feed.as_str()],
+        params![house.key(), feed.as_str()],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )
     .optional()
@@ -94,7 +94,7 @@ pub fn rollups_since(conn: &Connection, house: House, from_day: &str, only: Opti
          WHERE house = ?1 AND day >= ?2 AND (?3 IS NULL OR (item_id = ?3 AND variant_key = ?4))",
     )?;
     let mut out: HashMap<Key, (Vec<i64>, i64)> = HashMap::new();
-    let mut rows = st.query(params![house.as_str(), from_day, item, variant])?;
+    let mut rows = st.query(params![house.key(), from_day, item, variant])?;
     while let Some(r) = rows.next()? {
         let e = out.entry((r.get(0)?, r.get(1)?)).or_default();
         if let Some(m) = r.get::<_, Option<i64>>(2)? {
@@ -109,7 +109,7 @@ pub fn rollups_since(conn: &Connection, house: House, from_day: &str, only: Opti
 pub fn coverage_since(conn: &Connection, house: House, feed: Feed, from_day: &str) -> rusqlite::Result<i64> {
     conn.query_row(
         "SELECT COALESCE(SUM(covered_secs), 0) FROM daily_coverage WHERE house = ?1 AND feed = ?2 AND day >= ?3",
-        params![house.as_str(), feed.as_str(), from_day],
+        params![house.key(), feed.as_str(), from_day],
         |r| r.get(0),
     )
 }
@@ -126,7 +126,7 @@ pub struct AhlLatest {
 
 pub fn latest_ahledger(conn: &Connection, house: House) -> rusqlite::Result<Option<AhlLatest>> {
     let Some(market) = house.ahledger_market() else { return Ok(None) };
-    let as_of: Option<i64> = conn.query_row("SELECT MAX(as_of) FROM ahledger_rows WHERE market = ?1", [market], |r| r.get(0))?;
+    let as_of: Option<i64> = conn.query_row("SELECT MAX(as_of) FROM ahledger_rows WHERE market = ?1", [&market], |r| r.get(0))?;
     let Some(as_of) = as_of else { return Ok(None) };
     let mut st = conn.prepare("SELECT item_id, min_buyout, sales_per_day_x10 FROM ahledger_rows WHERE market = ?1 AND as_of = ?2")?;
     let rows = st.query_map(params![market, as_of], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?;

@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn missing_ids_lists_unknown_items() {
         let mut c = open_in_memory();
-        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'alliance', 'items', 1, 1, 2)", []).unwrap();
+        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'us-110', 'items', 1, 1, 2)", []).unwrap();
         c.execute("INSERT INTO item_aggregates(snapshot_id, item_id, variant_key, quantity, listings) VALUES (1, 2589, '', 1, 1), (1, 727, '', 1, 1), (1, 727, '12718', 1, 1)", []).unwrap();
         store_items(&mut c, &[meta(2589, "static-1.60.1_70399-forever-us")], 0).unwrap();
         assert_eq!(missing_item_ids(&c, 100).unwrap(), vec![727]);
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn missing_ids_only_considers_latest_snapshots() {
         let c = open_in_memory();
-        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'alliance', 'items', 1, 1, 1), (2, 'alliance', 'items', 2, 2, 1)", []).unwrap();
+        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'us-110', 'items', 1, 1, 1), (2, 'us-110', 'items', 2, 2, 1)", []).unwrap();
         c.execute("INSERT INTO item_aggregates(snapshot_id, item_id, variant_key, quantity, listings) VALUES (1, 9, '', 1, 1), (2, 10, '', 1, 1)", []).unwrap();
         assert_eq!(missing_item_ids(&c, 100).unwrap(), vec![10]);
     }
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn missing_ids_respects_limit() {
         let mut c = open_in_memory();
-        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'alliance', 'items', 1, 1, 3)", []).unwrap();
+        c.execute("INSERT INTO feed_snapshots(id, house, feed, last_modified, fetched_at, listing_count) VALUES (1, 'us-110', 'items', 1, 1, 3)", []).unwrap();
         c.execute("INSERT INTO item_aggregates(snapshot_id, item_id, variant_key, quantity, listings) VALUES (1, 1, '', 1, 1), (1, 2, '', 1, 1), (1, 3, '', 1, 1)", []).unwrap();
         assert_eq!(missing_item_ids(&c, 2).unwrap().len(), 2);
         let _ = &mut c;

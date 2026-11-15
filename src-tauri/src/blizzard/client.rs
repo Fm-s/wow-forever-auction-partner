@@ -1,14 +1,13 @@
-use crate::domain::{Feed, House};
+use crate::domain::{Feed, House, Region};
 use chrono::{DateTime, TimeZone, Utc};
 use reqwest::{header, StatusCode};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-pub const NAMESPACE_DYNAMIC: &str = "dynamic-forever-us";
 
 #[derive(Clone, Debug)]
 pub struct BlizzardConfig {
-    /// e.g. `https://us.api.blizzard.com`
+    /// e.g. `https://{region}.api.blizzard.com`; `{region}` is filled per request.
     pub api_base: String,
     /// e.g. `https://oauth.battle.net/token`
     pub token_url: String,
@@ -127,17 +126,33 @@ impl BlizzardClient {
         Err(FetchError::Unauthorized)
     }
 
+    /// URL on the US API (static item data is the same in every region).
+    pub fn static_url(&self, path_and_query: &str) -> String {
+        format!("{}{}", self.base(Region::Us), path_and_query)
+    }
+
+    /// API base for a region (`{region}` in the configured base is replaced; test bases have none).
+    fn base(&self, region: Region) -> String {
+        self.config.api_base.replace("{region}", region.as_str())
+    }
+
+    /// Requests a fresh token: `Err(Unauthorized)` when Blizzard rejects the credentials.
+    pub async fn check_credentials(&self) -> Result<(), FetchError> {
+        self.token(true).await.map(|_| ())
+    }
+
     pub fn feed_url(&self, house: House, feed: Feed) -> String {
         let suffix = match feed {
             Feed::Items => "",
             Feed::Commodities => "/commodities",
         };
+        let region = house.realm.region;
         format!(
-            "{}/data/wow/ruleset/1/auctions/{}{}?namespace={}&locale=en_US",
-            self.config.api_base,
+            "{}/data/wow/ruleset/1/auctions/{}{}?namespace=dynamic-forever-{}&locale=en_US",
+            self.base(region),
             house.auction_house_id(),
             suffix,
-            NAMESPACE_DYNAMIC
+            region.as_str()
         )
     }
 
@@ -157,8 +172,9 @@ impl BlizzardClient {
     }
 
     /// GET `{api_base}{path_and_query}` as JSON (used for static item data).
+    /// GET JSON from the US API (used for static item data).
     pub async fn get_json(&self, path_and_query: &str) -> Result<serde_json::Value, FetchError> {
-        let url = format!("{}{}", self.config.api_base, path_and_query);
+        let url = self.static_url(path_and_query);
         Ok(self.get(&url, None).await?.json().await?)
     }
 }
@@ -249,6 +265,29 @@ mod tests {
             })
             .await;
         assert!(matches!(client.fetch_feed(House::Blackwater, Feed::Items, None).await, Err(FetchError::NoLastModified)));
+    }
+
+    #[test]
+    fn feed_urls_use_the_house_region_and_static_data_us() {
+        use crate::domain::{Faction, Realm, RealmType, Region};
+        let client = BlizzardClient::new(BlizzardConfig { api_base: "https://{region}.api.blizzard.com".into(), token_url: "t".into(), client_id: "a".into(), client_secret: "b".into() });
+        let eu = Realm { region: Region::Eu, kind: RealmType::Rppvp }.house(Faction::Horde);
+        assert_eq!(client.feed_url(eu, Feed::Commodities), "https://eu.api.blizzard.com/data/wow/ruleset/1/auctions/124/commodities?namespace=dynamic-forever-eu&locale=en_US");
+        assert_eq!(client.static_url("/data/wow/item/1?namespace=static-forever-us"), "https://us.api.blizzard.com/data/wow/item/1?namespace=static-forever-us");
+    }
+
+    #[tokio::test]
+    async fn check_credentials_reports_rejection() {
+        let (server, client) = setup().await;
+        server.mock_async(|when, then| { when.method(POST).path("/token"); then.status(401); }).await;
+        assert!(matches!(client.check_credentials().await, Err(FetchError::Unauthorized)));
+    }
+
+    #[tokio::test]
+    async fn check_credentials_accepts_valid_ones() {
+        let (server, client) = setup().await;
+        mock_token(&server).await;
+        assert!(client.check_credentials().await.is_ok());
     }
 
     #[tokio::test]

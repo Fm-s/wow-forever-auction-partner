@@ -128,6 +128,7 @@ pub fn run() {
             commands::save_settings,
             commands::get_credentials_status,
             commands::save_credentials,
+            commands::complete_setup,
             commands::get_collector_status,
             commands::run_collection_now,
         ])

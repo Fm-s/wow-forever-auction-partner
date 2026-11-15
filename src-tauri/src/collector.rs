@@ -59,7 +59,7 @@ impl Endpoints {
             AHLEDGER_BASE.to_string()
         };
         Endpoints {
-            blizzard_api: "https://us.api.blizzard.com".into(),
+            blizzard_api: "https://{region}.api.blizzard.com".into(),
             blizzard_token: "https://oauth.battle.net/token".into(),
             ahledger,
         }
@@ -189,6 +189,16 @@ impl Collector {
         slot.as_ref().map(|(_, b)| b.clone())
     }
 
+    /// Requests a token with `creds` before they are saved; the error is shown to the user as is.
+    pub async fn check_credentials(&self, creds: &Credentials) -> Result<(), String> {
+        match BlizzardClient::new(self.blizzard_config(creds)).check_credentials().await {
+            Ok(()) => Ok(()),
+            Err(FetchError::Unauthorized) => Err("Blizzard rejected these credentials. Check the client ID and secret.".into()),
+            Err(FetchError::RateLimited(_)) => Err("Blizzard is rate limiting requests. Try again in a minute.".into()),
+            Err(e) => Err(format!("Couldn't reach Blizzard to check the credentials ({e}).")),
+        }
+    }
+
     fn blizzard_config(&self, creds: &Credentials) -> BlizzardConfig {
         BlizzardConfig {
             api_base: self.endpoints.blizzard_api.clone(),
@@ -211,7 +221,7 @@ impl Collector {
         let conn = self.db.lock().expect("db");
         conn.query_row(
             "SELECT last_modified, etag FROM source_status WHERE source = ?1 AND house = ?2 AND feed = ?3",
-            params![source, house.as_str(), feed],
+            params![source, house.key(), feed],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()
@@ -226,7 +236,7 @@ impl Collector {
             "INSERT INTO source_status(source, house, feed, last_success, last_modified, etag) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(source, house, feed) DO UPDATE SET last_success = excluded.last_success,
              last_modified = COALESCE(excluded.last_modified, last_modified), etag = COALESCE(excluded.etag, etag)",
-            params![source, house.as_str(), feed, now, last_modified, etag],
+            params![source, house.key(), feed, now, last_modified, etag],
         );
     }
 
@@ -235,7 +245,7 @@ impl Collector {
         let _ = conn.execute(
             "INSERT INTO source_status(source, house, feed, last_error_at, last_error) VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(source, house, feed) DO UPDATE SET last_error_at = excluded.last_error_at, last_error = excluded.last_error",
-            params![source, house.as_str(), feed, now, err],
+            params![source, house.key(), feed, now, err],
         );
     }
 
@@ -261,11 +271,17 @@ impl Collector {
             self.set_status("paused", None, now, false);
             return report;
         }
+        let settings = load_settings(&self.db.lock().expect("db"));
+        if !settings.setup_done {
+            self.set_status("setup", Some("Finish setup to start collecting".into()), now, false);
+            return report;
+        }
         let Some(creds) = self.load_creds() else {
             self.set_status("no_credentials", Some("Add Blizzard API credentials in Settings".into()), now, false);
             return report;
         };
-        let cadence = load_settings(&self.db.lock().expect("db")).cadence_secs;
+        let cadence = settings.cadence_secs;
+        let realm = settings.realm();
         let mut st = self.state.lock().await;
         let (blizzard, ahledger) = {
             let c = self.clients(&mut st, creds);
@@ -274,7 +290,7 @@ impl Collector {
 
         let mut fatal: Option<String> = None;
         let mut blizzard_ok = 0usize;
-        'feeds: for house in House::ALL {
+        'feeds: for house in realm.houses() {
             for feed in Feed::ALL {
                 let (stored_lm, _) = self.stored("blizzard", house, feed.as_str());
                 match blizzard.fetch_feed(house, feed, stored_lm).await {
@@ -332,10 +348,10 @@ impl Collector {
 
         if report.new_snapshots > 0 || now - st.last_ahledger_at >= AHLEDGER_MIN_SECS {
             st.last_ahledger_at = now;
-            for house in House::ALL {
+            for house in realm.houses() {
                 let Some(market) = house.ahledger_market() else { continue };
                 let (_, etag) = self.stored("ahledger", house, "pricetable");
-                match ahledger.fetch_pricetable(market, etag.as_deref()).await {
+                match ahledger.fetch_pricetable(&market, etag.as_deref()).await {
                     Ok(TableFetch::NotModified) => self.record_ok("ahledger", house, "pricetable", now, None, None),
                     Ok(TableFetch::Fresh { etag, table }) => {
                         let as_of = table.as_of;
@@ -429,11 +445,23 @@ mod tests {
         db: Db,
     }
 
+    /// In-memory DB with setup finished for `realm` (collection is idle before setup).
+    fn ready_db(realm: crate::domain::Realm) -> Db {
+        let c = open_in_memory();
+        let s = crate::settings::AppSettings { setup_done: true, region: realm.region, realm_type: realm.kind, ..crate::settings::AppSettings::default() };
+        crate::settings::save_settings(&c, &s).unwrap();
+        Arc::new(StdMutex::new(c))
+    }
+
     fn creds() -> Credentials {
         Credentials { blizzard_client_id: "id".into(), blizzard_client_secret: "secret".into(), ahledger_key: None }
     }
 
     async fn harness(token_ok: bool) -> Harness {
+        harness_in(token_ok, Default::default()).await
+    }
+
+    async fn harness_in(token_ok: bool, realm: crate::domain::Realm) -> Harness {
         let server = MockServer::start_async().await;
         if token_ok {
             server.mock_async(|w, t| { w.method(POST).path("/token"); t.status(200).json_body(serde_json::json!({"access_token":"t","expires_in":86399})); }).await;
@@ -442,7 +470,7 @@ mod tests {
         }
         server.mock_async(|w, t| { w.method(GET).path_prefix("/data/wow/item/"); t.status(404); }).await;
         server.mock_async(|w, t| { w.method(GET).path_prefix("/data/wow/media/"); t.status(404); }).await;
-        let db: Db = Arc::new(StdMutex::new(open_in_memory()));
+        let db = ready_db(realm);
         let events = Arc::new(StdMutex::new(Vec::new()));
         let ev = events.clone();
         let endpoints = Endpoints { blizzard_api: server.base_url(), blizzard_token: server.url("/token"), ahledger: server.url("/ahl") };
@@ -452,7 +480,7 @@ mod tests {
             Box::new(move |e| {
                 ev.lock().unwrap().push(match e {
                     CollectorEvent::Status(s) => format!("status:{}", s.state),
-                    CollectorEvent::Snapshot(s) => format!("snapshot:{}:{}", s.house.as_str(), s.feed.as_str()),
+                    CollectorEvent::Snapshot(s) => format!("snapshot:{}:{}", s.house.faction.as_str(), s.feed.as_str()),
                 })
             }),
             Some(creds()),
@@ -472,6 +500,40 @@ mod tests {
 
     fn q(db: &Db, sql: &str) -> i64 {
         db.lock().unwrap().query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn check_credentials_explains_a_rejection() {
+        let bad = harness(false).await;
+        assert_eq!(bad.collector.check_credentials(&creds()).await.unwrap_err(), "Blizzard rejected these credentials. Check the client ID and secret.");
+        let good = harness(true).await;
+        assert_eq!(good.collector.check_credentials(&creds()).await, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn idle_until_setup_is_done() {
+        let server = MockServer::start_async().await;
+        let any = server.mock_async(|w, t| { w.path_prefix("/"); t.status(500); }).await;
+        let db: Db = Arc::new(StdMutex::new(open_in_memory()));
+        let endpoints = Endpoints { blizzard_api: server.base_url(), blizzard_token: server.url("/token"), ahledger: server.url("/ahl") };
+        let c = Collector::with_credentials(db, endpoints, Box::new(|_| {}), Some(creds()));
+        let report = c.run_cycle(NOW).await;
+        assert_eq!((c.status().state.as_str(), report.new_snapshots), ("setup", 0));
+        assert_eq!(any.calls_async().await, 0, "nothing is fetched before setup");
+    }
+
+    #[tokio::test]
+    async fn collects_the_configured_realm() {
+        use crate::domain::{Realm, RealmType, Region};
+        let h = harness_in(true, Realm { region: Region::Eu, kind: RealmType::Rppvp }).await;
+        let (items, _) = mock_feeds_fresh(&h.server).await;
+        let ahl = mock_ahledger_ok(&h.server).await;
+        h.collector.run_cycle(NOW).await;
+        let houses: Vec<String> = h.db.lock().unwrap().prepare("SELECT DISTINCT house FROM feed_snapshots ORDER BY house").unwrap().query_map([], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect();
+        assert_eq!(houses, vec!["eu-123", "eu-124", "eu-125"]);
+        assert_eq!(items.calls_async().await, 3);
+        let tables = h.server.mock_async(|w, t| { w.path("/ahl/v1/pricetable/forever.rppvp.horde.eu"); t.status(304); }).await;
+        let _ = (ahl, tables);
     }
 
     #[tokio::test]
@@ -566,7 +628,7 @@ mod tests {
         let a = h.collector.lookup_client().expect("client");
         let b = h.collector.lookup_client().expect("client");
         assert!(Arc::ptr_eq(&a, &b), "same client, so its token is reused");
-        let db: Db = Arc::new(StdMutex::new(open_in_memory()));
+        let db = ready_db(Default::default());
         let none = Collector::with_credentials(db, Endpoints::production(), Box::new(|_| {}), None);
         assert!(none.lookup_client().is_none());
     }
@@ -574,7 +636,7 @@ mod tests {
     #[tokio::test]
     async fn missing_credentials_state() {
         let server = MockServer::start_async().await;
-        let db: Db = Arc::new(StdMutex::new(open_in_memory()));
+        let db = ready_db(Default::default());
         let endpoints = Endpoints { blizzard_api: server.base_url(), blizzard_token: server.url("/token"), ahledger: server.url("/ahl") };
         let c = Collector::with_credentials(db, endpoints, Box::new(|_| {}), None);
         c.run_cycle(NOW).await;

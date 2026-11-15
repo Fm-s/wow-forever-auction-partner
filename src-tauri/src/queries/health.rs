@@ -68,7 +68,7 @@ fn feed_health(conn: &Connection, source: &str, house: House, feed: &str, now: i
     let row: Option<StatusRow> = conn
         .query_row(
             "SELECT last_success, last_error_at, last_error, last_modified FROM source_status WHERE source = ?1 AND house = ?2 AND feed = ?3",
-            params![source, house.as_str(), feed],
+            params![source, house.key(), feed],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )
         .optional()?;
@@ -97,13 +97,14 @@ fn est_per_item(conn: &Connection, house: House, now: i64) -> rusqlite::Result<H
 
 pub fn health(conn: &Connection, settings: &AppSettings, now: i64) -> rusqlite::Result<Health> {
     let cadence = settings.cadence_secs;
+    let realm = settings.realm();
     let mut feeds = Vec::new();
-    for house in House::ALL {
+    for house in realm.houses() {
         for feed in Feed::ALL {
             feeds.push(feed_health(conn, "blizzard", house, feed.as_str(), now, cadence)?);
         }
     }
-    for house in House::ALL.into_iter().filter(|h| h.ahledger_market().is_some()) {
+    for house in realm.houses().into_iter().filter(|h| h.ahledger_market().is_some()) {
         feeds.push(feed_health(conn, "ahledger", house, "pricetable", now, cadence)?);
     }
 
@@ -115,13 +116,15 @@ pub fn health(conn: &Connection, settings: &AppSettings, now: i64) -> rusqlite::
             Ok((h, f, r.get::<_, i64>(2)?, r.get::<_, bool>(3)?))
         })?
         .filter_map(|x| x.ok())
-        .filter_map(|(h, f, t, gap)| Some(TimelinePoint { house: House::from_str(&h)?, feed: Feed::from_str(&f)?, t, gap }))
+        .filter_map(|(h, f, t, gap)| Some(TimelinePoint { house: House::from_key(&h)?, feed: Feed::from_str(&f)?, t, gap }))
+        // Other realms' history is kept but not shown.
+        .filter(|p| p.house.realm == realm)
         .collect();
 
     let info = items_info(conn)?;
     let mut disagreements = Vec::new();
     let mut calibration = Vec::new();
-    for house in House::ALL {
+    for house in realm.houses() {
         let Some(ahl) = latest_ahledger(conn, house)? else { continue };
         let mins = latest_item_mins(conn, house)?;
         for (item, m) in &mins {
@@ -201,7 +204,7 @@ mod tests {
     fn feed_health_reads_status_and_staleness() {
         let c = open_in_memory();
         c.execute(
-            "INSERT INTO source_status(source, house, feed, last_success, last_error_at, last_error, last_modified) VALUES ('blizzard','horde','items', ?1, ?2, 'boom', ?3)",
+            "INSERT INTO source_status(source, house, feed, last_success, last_error_at, last_error, last_modified) VALUES ('blizzard','us-113','items', ?1, ?2, 'boom', ?3)",
             rusqlite::params![NOW, NOW - 10, NOW - 600],
         )
         .unwrap();
@@ -217,6 +220,20 @@ mod tests {
         seed(&mut c, House::Alliance, Feed::Items, NOW - 6 * H, &[]);
         let h = health(&c, &AppSettings::default(), NOW).unwrap();
         assert_eq!(h.timeline.iter().map(|p| p.gap).collect::<Vec<_>>(), vec![false, true]);
+    }
+
+    #[test]
+    fn only_the_current_realm_is_shown() {
+        use crate::domain::{Faction, Realm, RealmType, Region};
+        let mut c = open_in_memory();
+        let eu = Realm { region: Region::Eu, kind: RealmType::Normal }.house(Faction::Alliance);
+        seed(&mut c, House::Alliance, Feed::Items, NOW - 60, &[]);
+        seed(&mut c, eu, Feed::Items, NOW - 60, &[]);
+        let s = AppSettings { region: Region::Eu, realm_type: RealmType::Normal, ..AppSettings::default() };
+        let h = health(&c, &s, NOW).unwrap();
+        assert_eq!(h.timeline.len(), 1);
+        assert_eq!(h.timeline[0].house, eu);
+        assert!(h.feeds.iter().all(|f| f.house.realm == eu.realm));
     }
 
     #[test]

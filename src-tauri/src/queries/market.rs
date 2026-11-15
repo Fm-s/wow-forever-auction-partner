@@ -120,7 +120,7 @@ pub struct CrossHouseRow {
 /// The item/variant in each house's latest snapshot (houses where it isn't listed are omitted).
 pub fn cross_house(conn: &Connection, item_id: i64, variant_key: &str, settings: &AppSettings) -> rusqlite::Result<Vec<CrossHouseRow>> {
     let mut out = Vec::new();
-    for house in House::ALL {
+    for house in settings.realm().houses() {
         let mut found: HashMap<i64, CrossHouseRow> = HashMap::new();
         for feed in Feed::ALL {
             let Some((id, lm)) = latest_snapshot(conn, house, feed)? else { continue };

@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 pub type Db = Arc<Mutex<Connection>>;
 
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("schema.sql")), M::up(include_str!("migration_2.sql")), M::up(include_str!("migration_3.sql")), M::up(include_str!("migration_4.sql"))])
+    Migrations::new(vec![M::up(include_str!("schema.sql")), M::up(include_str!("migration_2.sql")), M::up(include_str!("migration_3.sql")), M::up(include_str!("migration_4.sql")), M::up(include_str!("migration_5.sql"))])
 }
 
 fn prepare(conn: &mut Connection) -> rusqlite::Result<()> {
@@ -49,6 +49,25 @@ mod tests {
         let c = open_in_memory();
         assert!(c.query_row("SELECT 1 FROM sqlite_master WHERE name='daily_coverage'", [], |_| Ok(())).is_ok());
         assert!(c.query_row("SELECT 1 FROM sqlite_master WHERE name='idx_ahl_item'", [], |_| Ok(())).is_ok());
+    }
+
+    #[test]
+    fn migration_5_moves_existing_data_to_pvp_us_keys() {
+        let mut c = Connection::open_in_memory().unwrap();
+        migrations().to_version(&mut c, 4).unwrap();
+        c.execute_batch(
+            "INSERT INTO feed_snapshots(house, feed, last_modified, fetched_at, listing_count) VALUES ('alliance','items',1,1,0), ('horde','items',1,1,0), ('blackwater','items',1,1,0);
+             INSERT INTO daily_rollups(house, item_id, variant_key, day, avg_quantity, est_sold) VALUES ('horde', 1, '', '2026-11-14', 1, 0);
+             INSERT INTO daily_coverage(house, feed, day, covered_secs) VALUES ('blackwater', 'items', '2026-11-14', 60);
+             INSERT INTO source_status(source, house, feed) VALUES ('ahledger', 'alliance', 'pricetable');",
+        )
+        .unwrap();
+        migrations().to_latest(&mut c).unwrap();
+        let col = |sql: &str| -> Vec<String> { c.prepare(sql).unwrap().query_map([], |r| r.get(0)).unwrap().map(|x| x.unwrap()).collect() };
+        assert_eq!(col("SELECT house FROM feed_snapshots ORDER BY id"), vec!["us-110", "us-113", "us-116"]);
+        assert_eq!(col("SELECT house FROM daily_rollups"), vec!["us-113"]);
+        assert_eq!(col("SELECT house FROM daily_coverage"), vec!["us-116"]);
+        assert_eq!(col("SELECT house FROM source_status"), vec!["us-110"]);
     }
 
     #[test]

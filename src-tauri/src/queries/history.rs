@@ -59,7 +59,7 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
         .query_row(
             "SELECT s.feed FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
              WHERE s.house = ?1 AND a.item_id = ?2 AND a.variant_key = ?3 ORDER BY s.last_modified DESC LIMIT 1",
-            params![house.as_str(), item_id, variant_key],
+            params![house.key(), item_id, variant_key],
             |r| r.get(0),
         )
         .optional()?;
@@ -72,7 +72,7 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
                  LEFT JOIN item_aggregates a ON a.snapshot_id = s.id AND a.item_id = ?3 AND a.variant_key = ?4
                  WHERE s.house = ?1 AND s.feed = ?2 AND s.last_modified >= ?5 ORDER BY s.last_modified",
             )?;
-            let mut rows = st.query(params![house.as_str(), feed, item_id, variant_key, from])?;
+            let mut rows = st.query(params![house.key(), feed, item_id, variant_key, from])?;
             while let Some(r) = rows.next()? {
                 let t: i64 = r.get(0)?;
                 if r.get::<_, bool>(1)? {
@@ -84,7 +84,7 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
         }
         (None, Some(_)) => {
             let mut st = conn.prepare("SELECT day, min_price, median, avg_quantity FROM daily_rollups WHERE house = ?1 AND item_id = ?2 AND variant_key = ?3 ORDER BY day")?;
-            let rows = st.query_map(params![house.as_str(), item_id, variant_key], |r| {
+            let rows = st.query_map(params![house.key(), item_id, variant_key], |r| {
                 let day: String = r.get(0)?;
                 Ok(HistoryPoint { t: day_start(&day), min_price: r.get(1)?, median: r.get(2)?, quantity: r.get(3)? })
             })?;
@@ -109,9 +109,9 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
     if let Some(feed) = &feed {
         let mut sold_st = conn.prepare("SELECT day, est_sold FROM daily_rollups WHERE house = ?1 AND item_id = ?2 AND variant_key = ?3 AND day >= ?4")?;
         let sold: std::collections::HashMap<String, i64> =
-            sold_st.query_map(params![house.as_str(), item_id, variant_key, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+            sold_st.query_map(params![house.key(), item_id, variant_key, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
         let mut cov_st = conn.prepare("SELECT day, covered_secs FROM daily_coverage WHERE house = ?1 AND feed = ?2 AND day >= ?3 ORDER BY day")?;
-        let cov: Vec<(String, i64)> = cov_st.query_map(params![house.as_str(), feed, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        let cov: Vec<(String, i64)> = cov_st.query_map(params![house.key(), feed, from_day], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
         for (day, covered) in cov {
             if let Some((prev, _)) = est_sold_daily.last() {
                 let mut t = day_start(prev) + 86400;
@@ -129,7 +129,7 @@ pub fn item_history(conn: &Connection, house: House, item_id: i64, variant_key: 
         "SELECT a.median FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
          WHERE s.house = ?1 AND a.item_id = ?2 AND a.variant_key = ?3 AND s.last_modified >= ?4 AND a.median IS NOT NULL",
     )?;
-    let medians: Vec<f64> = st.query_map(params![house.as_str(), item_id, variant_key, now - WEEK], |r| r.get::<_, i64>(0).map(|m| m as f64))?.collect::<rusqlite::Result<_>>()?;
+    let medians: Vec<f64> = st.query_map(params![house.key(), item_id, variant_key, now - WEEK], |r| r.get::<_, i64>(0).map(|m| m as f64))?.collect::<rusqlite::Result<_>>()?;
     let volatility_7d = (medians.len() >= 24).then(|| {
         let n = medians.len() as f64;
         let mean = medians.iter().sum::<f64>() / n;

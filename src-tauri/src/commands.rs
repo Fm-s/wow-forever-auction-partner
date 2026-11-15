@@ -5,7 +5,8 @@ use crate::credentials::{credentials_status, save_credentials as store_credentia
 use crate::blizzard::static_data::{cached_tooltip, fetch_tooltip, store_tooltip};
 use crate::blizzard::tooltip::ItemTooltip;
 use crate::db::Db;
-use crate::domain::House;
+use crate::credentials::load_credentials;
+use crate::domain::{Faction, RealmType, Region};
 use crate::groups::{self, Group};
 use crate::queries::health::{health, Health};
 use crate::queries::history::{item_history, HistoryRange, ItemHistory};
@@ -33,18 +34,26 @@ async fn with_db<T: Send + 'static>(db: Db, f: impl FnOnce(&Connection) -> rusql
 }
 
 #[tauri::command]
-pub async fn get_market(state: State<'_, AppState>, house: House) -> Result<MarketView, String> {
-    with_db(state.db.clone(), move |c| market(c, house, &load_settings(c), now_unix())).await
+pub async fn get_market(state: State<'_, AppState>, house: Faction) -> Result<MarketView, String> {
+    with_db(state.db.clone(), move |c| {
+        let s = load_settings(c);
+        market(c, s.realm().house(house), &s, now_unix())
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn get_item_row(state: State<'_, AppState>, house: House, item_id: i64, variant_key: String) -> Result<Option<MarketRow>, String> {
-    with_db(state.db.clone(), move |c| item_row(c, house, item_id, &variant_key, &load_settings(c), now_unix())).await
+pub async fn get_item_row(state: State<'_, AppState>, house: Faction, item_id: i64, variant_key: String) -> Result<Option<MarketRow>, String> {
+    with_db(state.db.clone(), move |c| {
+        let s = load_settings(c);
+        item_row(c, s.realm().house(house), item_id, &variant_key, &s, now_unix())
+    })
+    .await
 }
 
 #[tauri::command]
-pub async fn get_item_history(state: State<'_, AppState>, house: House, item_id: i64, variant_key: String, range: HistoryRange) -> Result<ItemHistory, String> {
-    with_db(state.db.clone(), move |c| item_history(c, house, item_id, &variant_key, range, now_unix())).await
+pub async fn get_item_history(state: State<'_, AppState>, house: Faction, item_id: i64, variant_key: String, range: HistoryRange) -> Result<ItemHistory, String> {
+    with_db(state.db.clone(), move |c| item_history(c, load_settings(c).realm().house(house), item_id, &variant_key, range, now_unix())).await
 }
 
 #[tauri::command]
@@ -125,19 +134,53 @@ pub async fn get_credentials_status() -> Result<CredentialsStatus, String> {
     blocking(|| Ok(credentials_status())).await
 }
 
+fn new_credentials(id: Option<String>, secret: Option<String>, ahledger_key: Option<String>) -> Option<Credentials> {
+    let id = id.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())?;
+    let secret = secret.map(|v| v.trim().to_string()).filter(|v| !v.is_empty())?;
+    Some(Credentials { blizzard_client_id: id, blizzard_client_secret: secret, ahledger_key: ahledger_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) })
+}
+
+/// Checks the credentials with Blizzard, then stores them in the Keychain.
+async fn check_and_store(state: &AppState, c: Credentials) -> Result<(), String> {
+    state.collector.check_credentials(&c).await?;
+    blocking(move || store_credentials(&c).map_err(err)).await
+}
+
 #[tauri::command]
 pub async fn save_credentials(state: State<'_, AppState>, blizzard_client_id: String, blizzard_client_secret: String, ahledger_key: Option<String>) -> Result<(), String> {
-    let c = Credentials {
-        blizzard_client_id: blizzard_client_id.trim().to_string(),
-        blizzard_client_secret: blizzard_client_secret.trim().to_string(),
-        ahledger_key: ahledger_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()),
-    };
-    if c.blizzard_client_id.is_empty() || c.blizzard_client_secret.is_empty() {
-        return Err("Blizzard client ID and secret are required".into());
-    }
-    blocking(move || store_credentials(&c).map_err(err)).await?;
+    let c = new_credentials(Some(blizzard_client_id), Some(blizzard_client_secret), ahledger_key).ok_or("Blizzard client ID and secret are required")?;
+    check_and_store(&state, c).await?;
     state.collector.trigger_now();
     Ok(())
+}
+
+/// First-launch setup: realm + credentials. New credentials are checked with Blizzard before they are
+/// saved; without them, already-saved credentials are kept (an AHledger key can still be added).
+#[tauri::command]
+pub async fn complete_setup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    region: Region,
+    realm_type: RealmType,
+    blizzard_client_id: Option<String>,
+    blizzard_client_secret: Option<String>,
+    ahledger_key: Option<String>,
+) -> Result<(), String> {
+    match new_credentials(blizzard_client_id, blizzard_client_secret, ahledger_key.clone()) {
+        Some(c) => check_and_store(&state, c).await?,
+        None => {
+            let mut saved = blocking(|| Ok(load_credentials())).await?.ok_or("Enter your Blizzard client ID and secret")?;
+            if let Some(k) = ahledger_key.map(|k| k.trim().to_string()).filter(|k| !k.is_empty()) {
+                saved.ahledger_key = Some(k);
+                blocking(move || store_credentials(&saved).map_err(err)).await?;
+            }
+        }
+    }
+    let mut s = with_db(state.db.clone(), |c| Ok(load_settings(c))).await?;
+    s.region = region;
+    s.realm_type = realm_type;
+    s.setup_done = true;
+    state.apply_settings(&app, s)
 }
 
 #[tauri::command]

@@ -50,7 +50,7 @@ pub fn ingest_feed(
     let prev: Option<(i64, i64)> = tx
         .query_row(
             "SELECT id, last_modified FROM feed_snapshots WHERE house = ?1 AND feed = ?2 ORDER BY last_modified DESC LIMIT 1",
-            params![house.as_str(), feed.as_str()],
+            params![house.key(), feed.as_str()],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
@@ -62,7 +62,7 @@ pub fn ingest_feed(
     let gap = dt.is_some_and(|d| is_gap(d, cadence_secs));
     tx.execute(
         "INSERT INTO feed_snapshots(house, feed, last_modified, fetched_at, listing_count, dt_secs, gap) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![house.as_str(), feed.as_str(), last_modified, fetched_at, listings.len() as i64, dt, gap],
+        params![house.key(), feed.as_str(), last_modified, fetched_at, listings.len() as i64, dt, gap],
     )?;
     let snapshot_id = tx.last_insert_rowid();
 
@@ -94,7 +94,7 @@ pub fn ingest_feed(
     }
     tx.execute(
         "DELETE FROM raw_listings WHERE snapshot_id IN (SELECT id FROM feed_snapshots WHERE house = ?1 AND feed = ?2 ORDER BY last_modified DESC LIMIT -1 OFFSET 2)",
-        params![house.as_str(), feed.as_str()],
+        params![house.key(), feed.as_str()],
     )?;
     update_rollups(&tx, house, feed, last_modified, &touched)?;
     update_coverage(&tx, house, feed, last_modified)?;
@@ -116,7 +116,7 @@ fn update_rollups(tx: &Transaction, house: House, feed: Feed, t: i64, touched: &
             "SELECT a.item_id, a.variant_key, a.min_price, a.median, a.quantity FROM item_aggregates a JOIN feed_snapshots s ON s.id = a.snapshot_id
              WHERE s.house = ?1 AND s.feed = ?2 AND s.last_modified >= ?3 AND s.last_modified < ?4",
         )?;
-        let mut rows = st.query(params![house.as_str(), feed.as_str(), start, end])?;
+        let mut rows = st.query(params![house.key(), feed.as_str(), start, end])?;
         while let Some(r) = rows.next()? {
             let key: (i64, String) = (r.get(0)?, r.get(1)?);
             if !touched.contains(&key) {
@@ -137,7 +137,7 @@ fn update_rollups(tx: &Transaction, house: House, feed: Feed, t: i64, touched: &
             "SELECT v.item_id, v.variant_key, SUM(v.est_sold) FROM volume v JOIN feed_snapshots s ON s.id = v.snapshot_id
              WHERE s.house = ?1 AND s.feed = ?2 AND s.gap = 0 AND s.last_modified >= ?3 AND s.last_modified < ?4 GROUP BY v.item_id, v.variant_key",
         )?;
-        let mut rows = st.query(params![house.as_str(), feed.as_str(), start, end])?;
+        let mut rows = st.query(params![house.key(), feed.as_str(), start, end])?;
         while let Some(r) = rows.next()? {
             let key: (i64, String) = (r.get(0)?, r.get(1)?);
             if touched.contains(&key) {
@@ -157,7 +157,7 @@ fn update_rollups(tx: &Transaction, house: House, feed: Feed, t: i64, touched: &
         medians.sort_unstable();
         let median = if medians.is_empty() { None } else { Some(medians[(medians.len() - 1) / 2]) };
         let avg_q = if qtys.is_empty() { None } else { Some((qtys.iter().sum::<i64>() as f64 / qtys.len() as f64).round() as i64) };
-        st.execute(params![house.as_str(), item_id, variant, day, mins.iter().min().copied(), median, avg_q, sold])?;
+        st.execute(params![house.key(), item_id, variant, day, mins.iter().min().copied(), median, avg_q, sold])?;
     }
     Ok(())
 }
@@ -169,7 +169,7 @@ fn update_coverage(tx: &Transaction, house: House, feed: Feed, t: i64) -> rusqli
          SELECT ?1, ?2, ?3, COALESCE(SUM(dt_secs), 0) FROM feed_snapshots
          WHERE house = ?1 AND feed = ?2 AND gap = 0 AND dt_secs IS NOT NULL AND last_modified >= ?4 AND last_modified < ?5
          ON CONFLICT(house, feed, day) DO UPDATE SET covered_secs = excluded.covered_secs",
-        params![house.as_str(), feed.as_str(), day, start, start + 86400],
+        params![house.key(), feed.as_str(), day, start, start + 86400],
     )?;
     Ok(())
 }
@@ -304,7 +304,7 @@ mod tests {
         for t in [T0, T0 + H, T0 + 2 * H, T0 + 6 * H] {
             ing(&mut c, t, &[]);
         }
-        assert_eq!(count(&c, "SELECT covered_secs FROM daily_coverage WHERE house='alliance' AND feed='items' AND day='2026-11-14'"), 2 * H);
+        assert_eq!(count(&c, "SELECT covered_secs FROM daily_coverage WHERE house='us-110' AND feed='items' AND day='2026-11-14'"), 2 * H);
     }
 
     #[test]
