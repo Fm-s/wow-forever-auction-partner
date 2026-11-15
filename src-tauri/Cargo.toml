@@ -1,6 +1,6 @@
 [package]
 name = "auctioneer"
-version = "0.1.0"
+version = "0.1.1"
 description = "WoW Forever PvP auction tracker"
 authors = ["Felipe Souza"]
 repository = "https://github.com/Fm-s/wow-forever-auction-partner"

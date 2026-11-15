@@ -3,6 +3,24 @@
 All notable changes to WoW Forever Auction Partner are documented here.
 This file is generated from commit messages by [git-cliff](https://git-cliff.org).
 
+## [0.1.1](https://github.com/Fm-s/wow-forever-auction-partner/releases/tag/v0.1.1) — 2026-11-15
+
+### 🐛 Fixes
+
+- Keep items without a buyout last when sorting by min buyout ([`8d43c2d`](https://github.com/Fm-s/wow-forever-auction-partner/commit/8d43c2db37cf095ce025bff331df104e861d203b))
+
+### 🏗️ Build & CI
+
+- Bump the actions group with 4 updates ([`0654774`](https://github.com/Fm-s/wow-forever-auction-partner/commit/065477453944fe3ccfb607d308282429d7943bf6))
+
+### 📦 Dependencies
+
+- **deps:** Bump httpmock from 0.8.3 to 0.9.0 in /src-tauri ([`6ff8a60`](https://github.com/Fm-s/wow-forever-auction-partner/commit/6ff8a608511ade0c44b1898fba91ec1b28a5b7f7))
+- **deps:** Bump happy-dom from 20.0.11 to 21.0.4 ([`95470db`](https://github.com/Fm-s/wow-forever-auction-partner/commit/95470db46abae926361cb9fe95a8e4ed2a3f3160))
+- **deps:** TypeScript 7.0.2 and TanStack Table 9.3.1 ([`b271ca7`](https://github.com/Fm-s/wow-forever-auction-partner/commit/b271ca705137cc82a223a2dc50861dd2ed401cf9))
+
+
+**Full diff:** [v0.1.0...v0.1.1](https://github.com/Fm-s/wow-forever-auction-partner/compare/v0.1.0...v0.1.1)
 ## [0.1.0](https://github.com/Fm-s/wow-forever-auction-partner/releases/tag/v0.1.0) — 2026-11-15
 
 ### 🚀 Features
