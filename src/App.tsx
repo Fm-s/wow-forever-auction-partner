@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
-import { getCollectorStatus, onStatus } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import { getCollectorStatus, getGroups, onStatus } from "./api";
 import { HouseSelect } from "./components/HouseSelect";
 import { hhmm } from "./time";
-import type { CollectorStatus, House, ItemRef } from "./types";
+import type { CollectorStatus, Group, House, ItemRef } from "./types";
 import { HealthView } from "./views/HealthView";
 import { ItemView } from "./views/ItemView";
 import { MarketView } from "./views/MarketView";
@@ -29,6 +29,19 @@ export default function App() {
   const [house, setHouse] = useState<House>("alliance");
   const [item, setItem] = useState<ItemRef | null>(null);
   const [status, setStatus] = useState<CollectorStatus | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<number[]>([]);
+
+  // Selection is pruned to existing groups, so a deleted group's reused id can't come back selected.
+  const reloadGroups = useCallback(async () => {
+    const gs = await getGroups();
+    setGroups(gs);
+    setSelectedGroups((sel) => sel.filter((id) => gs.some((g) => g.id === id)));
+  }, []);
+
+  useEffect(() => {
+    reloadGroups().catch(() => {});
+  }, [reloadGroups]);
 
   useEffect(() => {
     void getCollectorStatus().then(setStatus);
@@ -58,7 +71,12 @@ export default function App() {
         <HouseSelect value={house} onChange={setHouse} />
         <nav>
           {nav.map((n) => (
-            <button key={n.id} className={navActive === n.id ? "active" : ""} aria-current={navActive === n.id ? "page" : undefined} onClick={() => setView(n.id)}>
+            <button
+              key={n.id}
+              className={navActive === n.id ? "active" : ""}
+              aria-current={navActive === n.id ? "page" : undefined}
+              onClick={() => setView(n.id)}
+            >
               {n.label}
             </button>
           ))}
@@ -69,10 +87,19 @@ export default function App() {
       </header>
       <div className="house-band" aria-hidden="true" />
       <main>
-        {view === "market" && <MarketView house={house} onOpenItem={(ref) => openItem(house, ref)} />}
+        {view === "market" && (
+          <MarketView
+            house={house}
+            onOpenItem={(ref) => openItem(house, ref)}
+            groups={groups}
+            selectedGroups={selectedGroups}
+            onSelectGroups={setSelectedGroups}
+            onGroupsChanged={reloadGroups}
+          />
+        )}
         {view === "item" && item && <ItemView house={house} item={item} onBack={() => setView("market")} />}
         {view === "health" && <HealthView onOpenItem={openItem} />}
-        {view === "settings" && <SettingsView />}
+        {view === "settings" && <SettingsView groups={groups} onGroupsChanged={reloadGroups} />}
       </main>
     </div>
   );

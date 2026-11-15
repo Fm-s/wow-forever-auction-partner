@@ -153,3 +153,14 @@ export interface TooltipLookup {
   cached: boolean;
   tooltip: ItemTooltip | null;
 }
+
+export interface GroupMember {
+  itemId: number;
+  variantKey: string;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  members: GroupMember[];
+}

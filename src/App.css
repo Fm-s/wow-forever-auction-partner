@@ -629,6 +629,212 @@ button.primary {
   color: var(--down);
 }
 
+/* group filter */
+.group-filter {
+  position: relative;
+}
+
+.picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  max-width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker.active {
+  border-color: var(--gold);
+}
+
+.caret {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 220px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.popover-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.popover-option:hover {
+  background: var(--panel-2);
+}
+
+.popover-name {
+  flex: 1;
+}
+
+.popover-empty {
+  margin: 4px 8px;
+  max-width: 240px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.popover-clear {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.popover-clear:hover {
+  color: var(--text);
+}
+
+td.empty-row {
+  padding: 28px 10px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* row context menu */
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+.menu-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 9px 7px;
+  margin-bottom: 3px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.menu-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.menu-check {
+  width: 16px;
+  color: var(--gold);
+  text-align: center;
+}
+
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+
+.menu-new {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+
+.menu-new input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.menu-error {
+  margin: 4px 9px 2px;
+  color: var(--down);
+  font-size: 13.5px;
+}
+
+/* settings: groups */
+.settings-page {
+  display: grid;
+  gap: 20px;
+}
+
+.group-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.group-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+}
+
+.group-row .group-name {
+  flex: 1;
+}
+
+.group-row input {
+  flex: 1;
+}
+
+.btn.danger {
+  border-color: var(--down);
+  color: var(--down);
+}
+
 /* item tooltip (in-game palette) */
 .item-hover {
   display: inline-flex;
@@ -737,4 +943,8 @@ button.primary {
   .spinner {
     animation-duration: 2.4s;
   }
+}
+
+input[type="checkbox"] {
+  accent-color: var(--gold);
 }

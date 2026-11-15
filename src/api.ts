@@ -5,6 +5,7 @@ import type {
   CollectorStatus,
   CredentialsStatus,
   CrossHouseRow,
+  Group,
   Health,
   HistoryRange,
   House,
@@ -27,6 +28,12 @@ export const loadTooltip = createTooltipLoader({
   cached: (itemId) => invoke<TooltipLookup>("get_cached_item_tooltip", { itemId }),
   fetch: (itemId) => invoke<ItemTooltip | null>("fetch_item_tooltip", { itemId }),
 });
+export const getGroups = () => invoke<Group[]>("get_groups");
+export const createGroup = (name: string) => invoke<Group>("create_group", { name });
+export const renameGroup = (id: number, name: string) => invoke<void>("rename_group", { id, name });
+export const deleteGroup = (id: number) => invoke<void>("delete_group", { id });
+export const setGroupMember = (groupId: number, itemId: number, variantKey: string, member: boolean) =>
+  invoke<void>("set_group_member", { groupId, itemId, variantKey, member });
 export const getHealth = () => invoke<Health>("get_health");
 export const getSettings = () => invoke<AppSettings>("get_settings");
 export const saveSettings = (settings: AppSettings) => invoke<void>("save_settings", { settings });
