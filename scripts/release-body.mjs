@@ -7,6 +7,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PLATFORM_ORDER = ["macOS", "Windows", "Linux"];
+const ARCH_ORDER = ["Universal (Apple Silicon + Intel)", "x64", "ARM64"];
+// Platform, then architecture, then the order packages appear in KINDS (recommended first).
+const rank = (info) => PLATFORM_ORDER.indexOf(info.platform) * 100 + ARCH_ORDER.indexOf(info.arch) * 10 + KINDS.findIndex(([, , kind]) => kind === info.kind);
 
 const KINDS = [
   [/\.dmg$/i, "macOS", "Disk image (.dmg)"],
@@ -33,7 +36,7 @@ export function classifyAsset(name) {
 const mb = (bytes) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 
 /** git-cliff renders its own "## [x.y.z](…) — date" heading; the release title already says that. */
-const stripVersionHeading = (notes) => notes.replace(/^\s*## \[[^\]]+\].*\n+/, "").trim();
+export const stripVersionHeading = (notes) => notes.replace(/^\s*## \[[^\]]+\].*\n+/, "").trim();
 
 export function renderReleaseBody({ version, repo, notes, assets, prerelease }) {
   const tag = `v${version}`;
@@ -41,7 +44,7 @@ export function renderReleaseBody({ version, repo, notes, assets, prerelease }) 
   const installers = assets
     .map((a) => ({ ...a, info: classifyAsset(a.name) }))
     .filter((a) => a.info)
-    .sort((a, b) => PLATFORM_ORDER.indexOf(a.info.platform) - PLATFORM_ORDER.indexOf(b.info.platform) || a.info.arch.localeCompare(b.info.arch) || a.name.localeCompare(b.name));
+    .sort((a, b) => rank(a.info) - rank(b.info) || a.name.localeCompare(b.name));
   const example = installers[0]?.name ?? "<file>";
 
   const out = [];

@@ -48,6 +48,19 @@ describe("renderReleaseBody", () => {
     expect(table.indexOf("macOS")).toBeLessThan(table.indexOf("Windows"));
     expect(table.indexOf("Windows")).toBeLessThan(table.indexOf("Linux"));
   });
+  it("orders x64 before ARM64 and the .exe installer before the MSI", () => {
+    const body = renderReleaseBody({
+      ...base,
+      assets: [
+        { name: "Auctioneer_0.2.0_arm64-setup.exe", sha256: sha("4"), size: 1 },
+        { name: "Auctioneer_0.2.0_x64_en-US.msi", sha256: sha("5"), size: 1 },
+        { name: "Auctioneer_0.2.0_x64-setup.exe", sha256: sha("6"), size: 1 },
+      ],
+    });
+    const order = ["x64-setup.exe", "x64_en-US.msi", "arm64-setup.exe"].map((n) => body.indexOf(n));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
   it("lists every asset's checksum", () => {
     const body = renderReleaseBody(base);
     for (const a of assets) expect(body).toContain(`${a.sha256}  ${a.name}`);
