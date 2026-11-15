@@ -77,6 +77,16 @@ describe("MarketView table", () => {
     expect(names()).toEqual(["Copper Ore", "Linen Cloth", "silk Cloth"]);
   });
 
+  test("keeps items without a buyout last whichever way min buyout is sorted", async () => {
+    await render([row(1, "No Price", 1, null), row(2, "Cheap", 2, 10), row(3, "Pricey", 3, 90)]);
+    await click(header("Min buyout"));
+    const first = names();
+    await click(header("Min buyout"));
+    const second = names();
+    expect([first, second]).toContainEqual(["Cheap", "Pricey", "No Price"]);
+    expect([first, second]).toContainEqual(["Pricey", "Cheap", "No Price"]);
+  });
+
   test("shows 100 rows per page", async () => {
     await render(Array.from({ length: 150 }, (_, i) => row(i + 1, `Item ${i + 1}`, 1000 - i, 1)));
     expect(document.querySelectorAll("tbody tr")).toHaveLength(100);

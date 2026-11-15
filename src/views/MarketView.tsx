@@ -54,9 +54,11 @@ const columns = col.columns([
       />
     ),
   }),
-  col.accessor("minPrice", {
+  // sortUndefined only recognises undefined, and the backend sends null for "no buyout"
+  col.accessor((r) => r.minPrice ?? undefined, {
+    id: "minPrice",
     header: "Min buyout",
-    cell: (c) => <Money copper={c.getValue()} />,
+    cell: (c) => <Money copper={c.getValue() ?? null} />,
     sortUndefined: "last",
     meta: { num: true },
   }),
