@@ -107,14 +107,20 @@ export interface AppSettings {
   cutBpsBlackwater: number;
   launchAtLogin: boolean;
   collectionPaused: boolean;
+  region: Region;
+  realmType: RealmType;
+  setupDone: boolean;
 }
+
+export type Region = "us" | "eu";
+export type RealmType = "pvp" | "normal" | "rp" | "rppvp";
 
 export interface CredentialsStatus {
   blizzardSet: boolean;
   ahledgerSet: boolean;
 }
 
-export type CollectorState = "starting" | "running" | "paused" | "error" | "no_credentials";
+export type CollectorState = "setup" | "starting" | "running" | "paused" | "error" | "no_credentials";
 
 export interface CollectorStatus {
   state: CollectorState;

@@ -2,12 +2,21 @@ import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCredentialsStatus, getSettings, onStatus, runCollectionNow, saveCredentials, saveSettings } from "../api";
 import { applySettingsForm } from "../settingsForm";
-import type { AppSettings, CredentialsStatus, Group } from "../types";
+import { REALM_TYPES, REALM_TYPE_LABEL, REGIONS, REGION_LABEL, realmSwitchNote } from "../realm";
+import type { AppSettings, CredentialsStatus, Group, RealmType, Region } from "../types";
 import { GroupSettings } from "../components/GroupSettings";
 
 const pct = (bps: number) => (bps / 100).toString();
 
-export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onGroupsChanged: () => Promise<void> }) {
+export function SettingsView({
+  groups,
+  onGroupsChanged,
+  onSaved,
+}: {
+  groups: Group[];
+  onGroupsChanged: () => Promise<void>;
+  onSaved: (s: AppSettings) => void;
+}) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [creds, setCreds] = useState<CredentialsStatus | null>(null);
   const [clientId, setClientId] = useState("");
@@ -15,6 +24,7 @@ export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onG
   const [ahlKey, setAhlKey] = useState("");
   const [cuts, setCuts] = useState({ alliance: "", horde: "", blackwater: "" });
   const [cadenceMin, setCadenceMin] = useState("");
+  const [realm, setRealm] = useState<{ region: Region; realmType: RealmType }>({ region: "us", realmType: "pvp" });
   const [message, setMessage] = useState<{
     kind: "ok" | "error";
     text: string;
@@ -29,6 +39,7 @@ export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onG
         blackwater: pct(s.cutBpsBlackwater),
       });
       setCadenceMin(String(Math.round(s.cadenceSecs / 60)));
+      setRealm({ region: s.region, realmType: s.realmType });
     });
     void getCredentialsStatus().then(setCreds);
     // pause can also be toggled from the tray; keep the checkbox in step with it
@@ -46,7 +57,7 @@ export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onG
     setMessage(null);
     try {
       // validate everything before saving anything
-      const form = { cadenceMin, cuts, launchAtLogin: settings.launchAtLogin };
+      const form = { cadenceMin, cuts, launchAtLogin: settings.launchAtLogin, ...realm };
       applySettingsForm(settings, form);
       if ((clientId || clientSecret || ahlKey) && (!clientId || !clientSecret)) {
         throw new Error("Enter both the Blizzard client ID and secret to change credentials.");
@@ -60,6 +71,7 @@ export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onG
       const next = applySettingsForm(await getSettings(), form);
       await saveSettings(next);
       setSettings(next);
+      onSaved(next);
       setCreds(await getCredentialsStatus());
       await runCollectionNow();
       setMessage({ kind: "ok", text: "Settings saved. Collecting now." });
@@ -84,6 +96,32 @@ export function SettingsView({ groups, onGroupsChanged }: { groups: Group[]; onG
   return (
     <div className="settings-page">
       <form className="settings" onSubmit={save}>
+        <section>
+          <h2>Realm</h2>
+          <div className="row2">
+            <label>
+              Region
+              <select value={realm.region} onChange={(e) => setRealm({ ...realm, region: e.target.value as Region })}>
+                {REGIONS.map((r) => (
+                  <option key={r} value={r}>
+                    {REGION_LABEL[r]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Realm type
+              <select value={realm.realmType} onChange={(e) => setRealm({ ...realm, realmType: e.target.value as RealmType })}>
+                {REALM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {REALM_TYPE_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="hint">{realmSwitchNote(settings, realm) ?? "Auctioneer tracks this realm type's Alliance, Horde and Blackwater auction houses."}</p>
+        </section>
         <section>
           <h2>Blizzard API</h2>
           <p className="hint">

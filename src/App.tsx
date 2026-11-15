@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { getCollectorStatus, getGroups, onStatus } from "./api";
+import { getCollectorStatus, getGroups, getSettings, onStatus } from "./api";
+import { realmLabel } from "./realm";
+import { SetupView } from "./views/SetupView";
 import { HouseSelect } from "./components/HouseSelect";
 import { hhmm } from "./time";
-import type { CollectorStatus, Group, House, ItemRef } from "./types";
+import type { AppSettings, CollectorStatus, Group, House, ItemRef } from "./types";
 import { HealthView } from "./views/HealthView";
 import { ItemView } from "./views/ItemView";
 import { MarketView } from "./views/MarketView";
@@ -17,6 +19,8 @@ function statusLabel(s: CollectorStatus | null): string {
       return s.lastNewSnapshotAt ? `Updated ${hhmm(s.lastNewSnapshotAt)}` : "Waiting for first snapshot";
     case "paused":
       return "Collection paused";
+    case "setup":
+      return "Finish setup to start collecting";
     case "starting":
       return "Starting…";
     default:
@@ -29,6 +33,8 @@ export default function App() {
   const [house, setHouse] = useState<House>("alliance");
   const [item, setItem] = useState<ItemRef | null>(null);
   const [status, setStatus] = useState<CollectorStatus | null>(null);
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<number[]>([]);
 
@@ -42,6 +48,13 @@ export default function App() {
   useEffect(() => {
     reloadGroups().catch(() => {});
   }, [reloadGroups]);
+
+  const reloadSettings = useCallback(() => {
+    getSettings()
+      .then((s) => (setSettings(s), setSettingsError(null)))
+      .catch((e) => setSettingsError(String(e)));
+  }, []);
+  useEffect(reloadSettings, [reloadSettings]);
 
   useEffect(() => {
     void getCollectorStatus().then(setStatus);
@@ -64,10 +77,16 @@ export default function App() {
   ];
   const navActive = view === "item" ? "market" : view;
 
+  if (!settings) return <div className="view-empty">{settingsError ? `Couldn't load settings: ${settingsError}` : "Loading…"}</div>;
+  if (!settings.setupDone) return <SetupView initial={settings} onDone={reloadSettings} />;
+
   return (
     <div className={`app house-theme-${house}`}>
       <header className="topbar">
         <span className="brand">Auctioneer</span>
+        <span className="realm" title="Realm being tracked (change it in Settings)">
+          {realmLabel(settings)}
+        </span>
         <HouseSelect value={house} onChange={setHouse} />
         <nav>
           {nav.map((n) => (
@@ -99,7 +118,7 @@ export default function App() {
         )}
         {view === "item" && item && <ItemView house={house} item={item} onBack={() => setView("market")} />}
         {view === "health" && <HealthView onOpenItem={openItem} />}
-        {view === "settings" && <SettingsView groups={groups} onGroupsChanged={reloadGroups} />}
+        {view === "settings" && <SettingsView groups={groups} onGroupsChanged={reloadGroups} onSaved={setSettings} />}
       </main>
     </div>
   );

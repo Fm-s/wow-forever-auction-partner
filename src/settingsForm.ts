@@ -1,9 +1,11 @@
-import type { AppSettings } from "./types";
+import type { AppSettings, RealmType, Region } from "./types";
 
 export interface SettingsForm {
   cadenceMin: string;
   cuts: { alliance: string; horde: string; blackwater: string };
   launchAtLogin: boolean;
+  region: Region;
+  realmType: RealmType;
 }
 
 /** "5" -> 500 basis points; null unless it's a number from 0 to 100. */
@@ -30,5 +32,7 @@ export function applySettingsForm(fresh: AppSettings, form: SettingsForm): AppSe
     cutBpsHorde: cut("Horde", form.cuts.horde),
     cutBpsBlackwater: cut("Blackwater", form.cuts.blackwater),
     launchAtLogin: form.launchAtLogin,
+    region: form.region,
+    realmType: form.realmType,
   };
 }

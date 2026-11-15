@@ -93,6 +93,15 @@ a {
   letter-spacing: 0.01em;
 }
 
+.realm {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 3px 9px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
 .house-band {
   height: 3px;
   background: var(--house);
@@ -600,6 +609,21 @@ table.data tbody tr.clickable:hover {
   color: var(--text);
 }
 
+.settings select {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  font: inherit;
+}
+
+.settings .row2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
 .settings .row3 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -627,6 +651,184 @@ button.primary {
 }
 .msg-error {
   color: var(--down);
+}
+
+/* first-launch setup */
+.setup {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+  background: radial-gradient(ellipse at top, color-mix(in srgb, var(--gold) 7%, var(--bg)), var(--bg) 60%);
+}
+
+.setup-card {
+  width: 100%;
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 26px 28px 24px;
+}
+
+.setup-card form {
+  display: grid;
+  gap: 14px;
+}
+
+.setup-brand {
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--gold);
+}
+
+.setup-steps {
+  display: flex;
+  gap: 18px;
+  margin: 6px 0 18px;
+  padding: 0;
+  list-style: none;
+  color: var(--faint);
+  font-size: 14px;
+  counter-reset: step;
+}
+
+.setup-steps li {
+  counter-increment: step;
+}
+
+.setup-steps li::before {
+  content: counter(step) ". ";
+}
+
+.setup-steps li[aria-current="step"] {
+  color: var(--text);
+}
+
+.setup h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.setup .hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.setup label {
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.setup input:not([type="radio"]) {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--text);
+}
+
+.setup fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.setup legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.choice-row {
+  display: flex;
+  gap: 8px;
+}
+
+.choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.setup label.choice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.choice-row .choice {
+  min-width: 96px;
+}
+
+.setup label.choice.selected {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 8%, var(--bg));
+}
+
+.choice input {
+  accent-color: var(--gold);
+  margin: 0;
+}
+
+.choice-title {
+  font-weight: 600;
+}
+
+.choice-hint {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.setup-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--up) 12%, var(--panel));
+  font-size: 14px;
+}
+
+.setup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.setup-actions .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* the spinner on a gold button */
+.primary .spinner {
+  border-color: rgba(26, 20, 6, 0.25);
+  border-top-color: #1a1406;
+}
+
+.setup-actions .primary:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+@media (max-width: 520px) {
+  .choice-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* group filter */

@@ -13,6 +13,8 @@ import type {
   MarketRow,
   MarketView,
   ItemTooltip,
+  RealmType,
+  Region,
   SnapshotEvent,
   TooltipLookup,
 } from "./types";
@@ -40,6 +42,8 @@ export const saveSettings = (settings: AppSettings) => invoke<void>("save_settin
 export const getCredentialsStatus = () => invoke<CredentialsStatus>("get_credentials_status");
 export const saveCredentials = (blizzardClientId: string, blizzardClientSecret: string, ahledgerKey: string | null) =>
   invoke<void>("save_credentials", { blizzardClientId, blizzardClientSecret, ahledgerKey });
+export const completeSetup = (region: Region, realmType: RealmType, blizzardClientId: string | null, blizzardClientSecret: string | null, ahledgerKey: string | null) =>
+  invoke<void>("complete_setup", { region, realmType, blizzardClientId, blizzardClientSecret, ahledgerKey });
 export const getCollectorStatus = () => invoke<CollectorStatus>("get_collector_status");
 export const runCollectionNow = () => invoke<void>("run_collection_now");
 
