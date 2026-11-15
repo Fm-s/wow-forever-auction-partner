@@ -17,6 +17,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   frontend:
     name: Frontend (typecheck, build, test)
@@ -44,9 +48,6 @@ jobs:
           - { name: macOS, os: macos-latest, clippy: false }
           - { name: Windows, os: windows-latest, clippy: false }
     runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

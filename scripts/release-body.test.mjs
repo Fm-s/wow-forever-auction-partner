@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyAsset, renderReleaseBody } from "./release-body.mjs";
+import { classifyAsset, renderReleaseBody, topSection } from "./release-body.mjs";
 
 const sha = (c) => c.repeat(64);
 const assets = [
@@ -61,6 +61,14 @@ describe("renderReleaseBody", () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
+  it("rejects a missing or non-semver version", () => {
+    for (const version of ["", undefined, "v0.2.0"]) expect(() => renderReleaseBody({ ...base, version })).toThrow(/version/i);
+  });
+
+  it("warns macOS users about the keychain prompt after updates", () => {
+    expect(renderReleaseBody(base)).toContain("Always Allow");
+  });
+
   it("lists every asset's checksum", () => {
     const body = renderReleaseBody(base);
     for (const a of assets) expect(body).toContain(`${a.sha256}  ${a.name}`);
@@ -79,5 +87,15 @@ describe("renderReleaseBody", () => {
     expect(body).toContain("Run anyway");
     expect(body).toContain("shasum -a 256 -c SHA256SUMS.txt --ignore-missing");
     expect(body).toContain("gh attestation verify Auctioneer_0.2.0_universal.dmg -R Fm-s/wow-forever-auction-partner");
+  });
+});
+
+describe("topSection", () => {
+  it("returns only the newest release section of a changelog", () => {
+    const md = "## [0.3.0](u) — d\n\n### 🚀 Features\n\n- New\n\n## [0.2.0](u) — d\n\n### 🐛 Fixes\n\n- Old\n";
+    expect(topSection(md)).toBe("## [0.3.0](u) — d\n\n### 🚀 Features\n\n- New");
+  });
+  it("returns the whole text when there is a single section", () => {
+    expect(topSection("## [0.1.0](u)\n\n- A\n")).toBe("## [0.1.0](u)\n\n- A");
   });
 });

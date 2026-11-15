@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertSemver } from "./versions.mjs";
 
 const PLATFORM_ORDER = ["macOS", "Windows", "Linux"];
 const ARCH_ORDER = ["Universal (Apple Silicon + Intel)", "x64", "ARM64"];
@@ -36,9 +37,16 @@ export function classifyAsset(name) {
 const mb = (bytes) => `${(bytes / 1_000_000).toFixed(1)} MB`;
 
 /** git-cliff renders its own "## [x.y.z](…) — date" heading; the release title already says that. */
+/** The newest "## " section of a git-cliff changelog (header stripped). */
+export function topSection(md) {
+  const sections = md.trim().split(/^(?=## )/m);
+  return (sections.find((s) => s.startsWith("## ")) ?? "").trim();
+}
+
 export const stripVersionHeading = (notes) => notes.replace(/^\s*## \[[^\]]+\].*\n+/, "").trim();
 
 export function renderReleaseBody({ version, repo, notes, assets, prerelease }) {
+  assertSemver(version);
   const tag = `v${version}`;
   const url = (name) => `https://github.com/${repo}/releases/download/${tag}/${encodeURIComponent(name)}`;
   const installers = assets
@@ -60,7 +68,7 @@ export function renderReleaseBody({ version, repo, notes, assets, prerelease }) 
     "",
     "These builds are not signed with an Apple or Microsoft certificate, so the OS asks once before the first launch.",
     "",
-    "- **macOS:** open the `.dmg` and drag Auctioneer to Applications. On first launch macOS says it can't verify the app — open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/Auctioneer.app`.)",
+    "- **macOS:** open the `.dmg` and drag Auctioneer to Applications. On first launch macOS says it can't verify the app — open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/Auctioneer.app`.) After each update macOS may ask once for your login password so Auctioneer can read its saved credentials — choose **Always Allow**.",
     "- **Windows:** SmartScreen shows “Windows protected your PC” — click **More info → Run anyway**.",
     "- **Linux:** `chmod +x Auctioneer_*.AppImage && ./Auctioneer_*.AppImage`, or install the `.deb` / `.rpm`. Credentials are stored via the Secret Service (GNOME Keyring / KWallet).",
     "",

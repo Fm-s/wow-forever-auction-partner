@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CARGO_LOCK, CRATE, VERSION_FILES, isSemver, readVersions, setCargoLockVersion, setCargoTomlVersion, setJsonVersion } from "./versions.mjs";
+import { generateNotes } from "./release-notes.mjs";
+import { CARGO_LOCK, CRATE, VERSION_FILES, cliffTagArgs, isSemver, readVersions, setCargoLockVersion, setCargoTomlVersion, setJsonVersion } from "./versions.mjs";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const args = process.argv.slice(2);
@@ -37,7 +38,7 @@ const edits = [
   [CARGO_LOCK, (t) => setCargoLockVersion(t, CRATE, version)],
 ];
 const cliff = (cliffArgs) => sh("pnpm", ["exec", "git-cliff", ...cliffArgs], { stdio: ["ignore", "pipe", "inherit"] });
-const notes = cliff(["--unreleased", "--tag", tag, "--strip", "all"]);
+const notes = generateNotes(tag);
 
 if (dryRun) {
   edits.forEach(([f]) => console.log(`  would bump ${f}`));
@@ -50,7 +51,7 @@ for (const [file, edit] of edits) {
   const p = join(root, file);
   writeFileSync(p, edit(readFileSync(p, "utf8")));
 }
-cliff(["--tag", tag, "-o", "CHANGELOG.md"]);
+cliff(["--tag", tag, "-o", "CHANGELOG.md", ...cliffTagArgs(version)]);
 sh("git", ["add", ...edits.map(([f]) => f), "CHANGELOG.md"]);
 sh("git", ["commit", "-m", `chore(release): ${tag}`]);
 sh("git", ["tag", "-a", tag, "-F", "-", "--cleanup=verbatim"], { input: `${tag}\n\n${notes}\n` });

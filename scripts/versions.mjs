@@ -17,6 +17,19 @@ export function isSemver(v) {
   return SEMVER.test(v);
 }
 
+/** Throws unless v is a bare semver (no leading "v"); guards scripts fed from CI outputs. */
+export function assertSemver(v) {
+  if (typeof v !== "string" || !isSemver(v)) throw new Error(`Invalid version "${v}": expected semver like 1.2.3`);
+}
+
+/**
+ * git-cliff flags for a release's notes. A stable release folds its betas in, so users updating
+ * from the previous stable see everything since then, not just the changes since the last beta.
+ */
+export function cliffTagArgs(v) {
+  return isPrerelease(v) ? [] : ["--ignore-tags", ".*-.*"];
+}
+
 export function isPrerelease(v) {
   const m = SEMVER.exec(v);
   return Boolean(m && m[4]);

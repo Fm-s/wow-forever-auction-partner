@@ -6,6 +6,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripVersionHeading } from "./release-body.mjs";
+import { assertSemver } from "./versions.mjs";
 
 function arch(name) {
   if (/(aarch64|arm64)/i.test(name)) return "aarch64";
@@ -33,6 +34,7 @@ export function updaterKeys(name) {
 }
 
 export function buildLatestJson({ version, notes, pubDate, repo, assets }) {
+  assertSemver(version);
   const platforms = {};
   for (const { name, signature } of assets) {
     if (!signature) continue;

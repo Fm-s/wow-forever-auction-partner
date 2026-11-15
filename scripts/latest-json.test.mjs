@@ -44,6 +44,9 @@ describe("buildLatestJson", () => {
     expect(Object.keys(json.platforms)).not.toContain(undefined);
     expect(Object.keys(json.platforms).sort()).toEqual(["darwin-aarch64", "darwin-aarch64-app", "darwin-x86_64", "darwin-x86_64-app", "windows-x86_64", "windows-x86_64-nsis"]);
   });
+  it("rejects a missing or non-semver version", () => {
+    for (const version of ["", undefined, "v0.2.0"]) expect(() => buildLatestJson({ version, notes: "", pubDate: "x", repo, assets })).toThrow(/version/i);
+  });
   it("throws when no platform could be built", () => {
     expect(() => buildLatestJson({ version: "0.2.0", notes: "", pubDate: "x", repo, assets: [] })).toThrow(/no signed updater/i);
   });

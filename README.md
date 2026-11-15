@@ -33,6 +33,8 @@ Builds are not signed with an Apple or Microsoft certificate, so your OS asks on
 - **macOS:** drag Auctioneer to Applications and open it. When macOS says it can't verify the developer, open
   **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
   Alternatively: `xattr -dr com.apple.quarantine /Applications/Auctioneer.app`
+  After an update, macOS may ask once for your login password so Auctioneer can read its saved credentials.
+  Choose **Always Allow**. (Unsigned builds get a new code signature every release.)
 - **Windows:** on “Windows protected your PC”, click **More info → Run anyway**.
 - **Linux:** `chmod +x Auctioneer_*.AppImage` and run it, or install the `.deb` / `.rpm`. Credentials are stored
   through the Secret Service (GNOME Keyring or KWallet), which must be running.
@@ -88,8 +90,10 @@ Pushing the tag runs [`release.yml`](.github/workflows/release.yml):
 4. **Publish:** `latest.json`, `SHA256SUMS.txt`, an SPDX SBOM and provenance attestations are added, the release
    page gets downloads and verification instructions, and the draft is published
 
-If any platform fails, the release stays a draft. Fix it and re-run the failed jobs, or run the workflow manually
-with the tag. Tags with a suffix (`v0.3.0-beta.1`) publish as pre-releases, which the in-app updater ignores.
+If any platform fails, the release stays a draft. For a flaky failure, **re-run the failed jobs**; every job builds
+the exact commit `verify` checked, so a re-run can't mix commits. For a code fix, delete the draft and the tag,
+fix on `main`, then tag again. Tags with a suffix (`v0.3.0-beta.1`) publish as pre-releases, which the in-app
+updater ignores; the next stable release's notes include everything since the previous stable.
 
 ### Required repository secrets
 

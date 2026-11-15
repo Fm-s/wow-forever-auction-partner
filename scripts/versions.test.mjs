@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertVersionsMatch, isPrerelease, isSemver, setCargoLockVersion, setCargoTomlVersion, setJsonVersion } from "./versions.mjs";
+import { assertVersionsMatch, cliffTagArgs, isPrerelease, isSemver, setCargoLockVersion, setCargoTomlVersion, setJsonVersion } from "./versions.mjs";
 
 describe("isSemver", () => {
   it("accepts release and prerelease versions", () => {
@@ -55,5 +55,14 @@ describe("assertVersionsMatch", () => {
   });
   it("names each mismatching file", () => {
     expect(() => assertVersionsMatch({ packageJson: "0.1.0", tauriConf: "0.2.0", cargoToml: "0.1.0" }, "0.2.0")).toThrow(/package\.json.*0\.1\.0[\s\S]*Cargo\.toml/);
+  });
+});
+
+describe("cliffTagArgs", () => {
+  it("folds prerelease tags into a stable release's notes", () => {
+    expect(cliffTagArgs("0.3.0")).toEqual(["--ignore-tags", ".*-.*"]);
+  });
+  it("keeps prerelease tags for prerelease notes", () => {
+    expect(cliffTagArgs("0.3.0-beta.2")).toEqual([]);
   });
 });
