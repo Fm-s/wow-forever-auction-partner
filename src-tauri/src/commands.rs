@@ -5,7 +5,7 @@ use crate::credentials::{credentials_status, save_credentials as store_credentia
 use crate::blizzard::static_data::{cached_tooltip, fetch_tooltip, store_tooltip};
 use crate::blizzard::tooltip::ItemTooltip;
 use crate::db::Db;
-use crate::credentials::load_credentials;
+use crate::credentials::{keep_saved_ahledger_key, load_credentials};
 use crate::domain::{Faction, RealmType, Region};
 use crate::groups::{self, Group};
 use crate::queries::health::{health, Health};
@@ -141,9 +141,10 @@ fn new_credentials(id: Option<String>, secret: Option<String>, ahledger_key: Opt
 }
 
 /// Checks the credentials with Blizzard, then stores them in the Keychain.
+/// A blank AHledger field keeps the saved key.
 async fn check_and_store(state: &AppState, c: Credentials) -> Result<(), String> {
     state.collector.check_credentials(&c).await?;
-    blocking(move || store_credentials(&c).map_err(err)).await
+    blocking(move || store_credentials(&keep_saved_ahledger_key(c, load_credentials())).map_err(err)).await
 }
 
 #[tauri::command]

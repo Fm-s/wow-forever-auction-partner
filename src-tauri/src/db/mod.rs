@@ -70,6 +70,29 @@ mod tests {
         assert_eq!(col("SELECT house FROM source_status"), vec!["us-110"]);
     }
 
+    fn upgraded(settings_json: Option<&str>, with_snapshots: bool) -> crate::settings::AppSettings {
+        let mut c = Connection::open_in_memory().unwrap();
+        migrations().to_version(&mut c, 4).unwrap();
+        if let Some(j) = settings_json {
+            c.execute("INSERT INTO settings(key, value) VALUES ('app', ?1)", [j]).unwrap();
+        }
+        if with_snapshots {
+            c.execute("INSERT INTO feed_snapshots(house, feed, last_modified, fetched_at, listing_count) VALUES ('alliance','items',1,1,0)", []).unwrap();
+        }
+        migrations().to_latest(&mut c).unwrap();
+        crate::settings::load_settings(&c)
+    }
+
+    #[test]
+    fn installs_that_already_collected_count_as_set_up() {
+        let s = upgraded(Some(r#"{"cadenceSecs":1800,"cutBpsHorde":400}"#), true);
+        assert!(s.setup_done, "an upgrade must not stop collection until someone opens the window");
+        assert_eq!((s.cadence_secs, s.cut_bps_horde, s.realm()), (1800, 400, Default::default()), "other settings survive; realm is PvP US");
+        assert!(upgraded(None, true).setup_done);
+        assert!(!upgraded(None, false).setup_done, "a new install still sees setup");
+        assert!(!upgraded(Some("{}"), false).setup_done);
+    }
+
     #[test]
     fn open_file_db_is_wal_and_reopenable() {
         let dir = std::env::temp_dir().join(format!("auctioneer-test-{}", std::process::id()));

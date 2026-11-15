@@ -88,6 +88,14 @@ pub fn save_credentials(c: &Credentials) -> Result<(), keyring::Error> {
 }
 
 /// Which credentials are available; never the secrets themselves.
+/// New Blizzard credentials keep the saved AHledger key unless a new key is given.
+pub fn keep_saved_ahledger_key(new: Credentials, saved: Option<Credentials>) -> Credentials {
+    match new.ahledger_key {
+        Some(_) => new,
+        None => Credentials { ahledger_key: saved.and_then(|s| s.ahledger_key), ..new },
+    }
+}
+
 pub fn credentials_status() -> CredentialsStatus {
     let c = load_credentials();
     CredentialsStatus { blizzard_set: c.is_some(), ahledger_set: c.and_then(|c| c.ahledger_key).is_some() }
@@ -96,6 +104,17 @@ pub fn credentials_status() -> CredentialsStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn creds(key: Option<&str>) -> Credentials {
+        Credentials { blizzard_client_id: "id".into(), blizzard_client_secret: "s".into(), ahledger_key: key.map(str::to_string) }
+    }
+
+    #[test]
+    fn new_blizzard_credentials_keep_the_saved_ahledger_key() {
+        assert_eq!(keep_saved_ahledger_key(creds(None), Some(creds(Some("ahlk_old")))).ahledger_key.as_deref(), Some("ahlk_old"));
+        assert_eq!(keep_saved_ahledger_key(creds(Some("ahlk_new")), Some(creds(Some("ahlk_old")))).ahledger_key.as_deref(), Some("ahlk_new"));
+        assert_eq!(keep_saved_ahledger_key(creds(None), None).ahledger_key, None);
+    }
 
     #[test]
     fn env_parsing() {

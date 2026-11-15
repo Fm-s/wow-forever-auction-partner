@@ -114,7 +114,7 @@ export function SetupView({ initial, onDone }: { initial: AppSettings; onDone: (
             <p className="hint">
               Auction data comes from Blizzard's official API, which needs a free API client. Create one at{" "}
               <ExternalLink href="https://develop.battle.net/access/clients">develop.battle.net</ExternalLink> (any name and redirect URL), then paste its ID
-              and secret. They're stored in your macOS Keychain.
+              and secret. They're stored in your system's credential store (the Keychain on macOS).
             </p>
             {creds?.blizzardSet && <p className="setup-note">Credentials are already saved. Leave both fields empty to keep them.</p>}
             <label>
@@ -131,8 +131,14 @@ export function SetupView({ initial, onDone }: { initial: AppSettings; onDone: (
               </span>
               <input type="password" value={ahlKey} onChange={(e) => setAhlKey(e.target.value)} autoComplete="off" placeholder="ahlk_…" disabled={busy} />
               <span className="hint">
-                AHledger prices are compared without a key; a <ExternalLink href="https://ahledger.com/developers">free key</ExternalLink> raises its rate
-                limit.
+                {creds?.ahledgerSet ? (
+                  "An AHledger key is saved. Leave this empty to keep it."
+                ) : (
+                  <>
+                    AHledger prices are compared without a key; a <ExternalLink href="https://ahledger.com/developers">free key</ExternalLink> raises its
+                    rate limit.
+                  </>
+                )}
               </span>
             </label>
             {error && (
