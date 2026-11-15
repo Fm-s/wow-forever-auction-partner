@@ -6,6 +6,7 @@ use crate::blizzard::static_data::{cached_tooltip, fetch_tooltip, store_tooltip}
 use crate::blizzard::tooltip::ItemTooltip;
 use crate::db::Db;
 use crate::domain::House;
+use crate::groups::{self, Group};
 use crate::queries::health::{health, Health};
 use crate::queries::history::{item_history, HistoryRange, ItemHistory};
 use crate::queries::market::{cross_house, item_row, market, CrossHouseRow, MarketRow, MarketView};
@@ -75,6 +76,33 @@ pub async fn fetch_item_tooltip(state: State<'_, AppState>, item_id: i64) -> Res
     let stored = tooltip.clone();
     with_db(state.db.clone(), move |c| store_tooltip(c, item_id, stored.as_ref(), now_unix())).await?;
     Ok(tooltip)
+}
+
+#[tauri::command]
+pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<Group>, String> {
+    with_db(state.db.clone(), groups::list_groups).await
+}
+
+#[tauri::command]
+pub async fn create_group(state: State<'_, AppState>, name: String) -> Result<Group, String> {
+    let db = state.db.clone();
+    blocking(move || groups::create_group(&*db.lock().map_err(err)?, &name, now_unix()).map_err(err)).await
+}
+
+#[tauri::command]
+pub async fn rename_group(state: State<'_, AppState>, id: i64, name: String) -> Result<(), String> {
+    let db = state.db.clone();
+    blocking(move || groups::rename_group(&*db.lock().map_err(err)?, id, &name).map_err(err)).await
+}
+
+#[tauri::command]
+pub async fn delete_group(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    with_db(state.db.clone(), move |c| groups::delete_group(c, id)).await
+}
+
+#[tauri::command]
+pub async fn set_group_member(state: State<'_, AppState>, group_id: i64, item_id: i64, variant_key: String, member: bool) -> Result<(), String> {
+    with_db(state.db.clone(), move |c| groups::set_member(c, group_id, item_id, &variant_key, member, now_unix())).await
 }
 
 #[tauri::command]

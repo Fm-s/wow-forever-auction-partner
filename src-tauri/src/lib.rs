@@ -5,6 +5,7 @@ pub mod commands;
 pub mod credentials;
 pub mod db;
 pub mod domain;
+pub mod groups;
 pub mod processing;
 pub mod queries;
 pub mod settings;
@@ -117,6 +118,11 @@ pub fn run() {
             commands::get_cross_house,
             commands::get_cached_item_tooltip,
             commands::fetch_item_tooltip,
+            commands::get_groups,
+            commands::create_group,
+            commands::rename_group,
+            commands::delete_group,
+            commands::set_group_member,
             commands::get_health,
             commands::get_settings,
             commands::save_settings,

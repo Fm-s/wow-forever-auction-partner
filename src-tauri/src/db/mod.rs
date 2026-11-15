@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 pub type Db = Arc<Mutex<Connection>>;
 
 fn migrations() -> Migrations<'static> {
-    Migrations::new(vec![M::up(include_str!("schema.sql")), M::up(include_str!("migration_2.sql")), M::up(include_str!("migration_3.sql"))])
+    Migrations::new(vec![M::up(include_str!("schema.sql")), M::up(include_str!("migration_2.sql")), M::up(include_str!("migration_3.sql")), M::up(include_str!("migration_4.sql"))])
 }
 
 fn prepare(conn: &mut Connection) -> rusqlite::Result<()> {
