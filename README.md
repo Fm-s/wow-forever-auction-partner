@@ -1,18 +1,31 @@
-# Auctioneer
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt="">
+</p>
 
-[![CI](https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/ci.yml/badge.svg)](https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/ci.yml)
-[![Release](https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/release.yml/badge.svg)](https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/release.yml)
-[![Latest release](https://img.shields.io/github/v/release/Fm-s/wow-forever-auction-partner?sort=semver)](https://github.com/Fm-s/wow-forever-auction-partner/releases/latest)
+<h1 align="center">WoW Forever Auction Partner</h1>
 
-A desktop auction-house companion for **World of Warcraft: Forever** (PvP, US). Auctioneer runs quietly in your
-tray, collects every Blizzard auction snapshot for the Alliance, Horde and Blackwater houses, and builds its own
-price and volume history so you can spot what's cheap, what sells, and where.
+<p align="center">
+  <a href="https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/ci.yml"><img src="https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/release.yml"><img src="https://github.com/Fm-s/wow-forever-auction-partner/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://github.com/Fm-s/wow-forever-auction-partner/releases/latest"><img src="https://img.shields.io/github/v/release/Fm-s/wow-forever-auction-partner?sort=semver" alt="Latest release"></a>
+</p>
 
-- **Market browser:** every item per house with min buyout, median, quantity, 7/30-day medians and estimated sales per day
-- **Item detail:** price and quantity history charts and cross-house comparison
+A desktop auction-house companion for **World of Warcraft: Forever**. It runs quietly in your tray, collects every
+Blizzard auction snapshot for your realm type's Alliance, Horde and Blackwater houses, and builds its own price and
+volume history so you can spot what's cheap, what sells, and where.
+
+Works with every Forever realm type (**PvP, Normal, Roleplay, Roleplay PvP**) in the **US and EU** regions. You pick
+one at first launch and can switch in Settings; each realm keeps its own history.
+
+- **Market browser:** every item per house with min buyout, median, quantity, 7-day median and estimated sales per day
+- **Item detail:** price and quantity history charts and a cross-house comparison
+- **Item tooltips:** hover an icon for the in-game tooltip (stats, effects, set bonuses, sell price), cached locally
+- **Groups:** right-click any item to file it into your own groups (Flips, Herbs, …) and filter the market by them
 - **Second opinion:** prices checked against [AHledger](https://ahledger.com), with disagreements flagged
 - **Data health:** last fetch per source, snapshot gaps, errors
 - **Tray app:** starts at login, collects in the background, updates itself
+
+Sales per day are estimates from listings that disappear between snapshots, not Blizzard sales data.
 
 ## Download
 
@@ -20,31 +33,35 @@ Get the latest version from **[Releases](https://github.com/Fm-s/wow-forever-auc
 
 | Platform | File |
 |---|---|
-| macOS 11+ (Apple Silicon and Intel) | `Auctioneer_<version>_universal.dmg` |
-| Windows 10/11 x64 · ARM64 | `Auctioneer_<version>_x64-setup.exe` · `_arm64-setup.exe` (or the `.msi`) |
+| macOS 11+ (Apple Silicon and Intel) | `…_universal.dmg` |
+| Windows 10/11 x64 · ARM64 | `…_x64-setup.exe` · `…_arm64-setup.exe` (or the `.msi`) |
 | Linux x64 · ARM64 | `.AppImage` (any distro, auto-updates), `.deb`, `.rpm` |
 
-Once installed, Auctioneer checks for new versions at launch and offers **Install & restart**.
+Once installed, the app checks for new versions at launch and offers **Install & restart**.
 
 ### First launch
 
 Builds are not signed with an Apple or Microsoft certificate, so your OS asks once:
 
-- **macOS:** drag Auctioneer to Applications and open it. When macOS says it can't verify the developer, open
-  **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
-  Alternatively: `xattr -dr com.apple.quarantine /Applications/Auctioneer.app`
-  After an update, macOS may ask once for your login password so Auctioneer can read its saved credentials.
+- **macOS:** drag WoW Forever Auction Partner to Applications and open it. When macOS says it can't verify the
+  developer, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+  Alternatively: `xattr -dr com.apple.quarantine "/Applications/WoW Forever Auction Partner.app"`
+  After an update, macOS may ask once for your login password so the app can read its saved credentials.
   Choose **Always Allow**. (Unsigned builds get a new code signature every release.)
 - **Windows:** on “Windows protected your PC”, click **More info → Run anyway**.
-- **Linux:** `chmod +x Auctioneer_*.AppImage` and run it, or install the `.deb` / `.rpm`. Credentials are stored
-  through the Secret Service (GNOME Keyring or KWallet), which must be running.
+- **Linux:** make the `.AppImage` executable (`chmod +x`) and run it, or install the `.deb` / `.rpm`. Credentials
+  are stored through the Secret Service (GNOME Keyring or KWallet), which must be running.
 
 ### Setup
 
-Auctioneer reads Blizzard's official Game Data API with your own free API client:
+The app reads Blizzard's official Game Data API with your own free API client. On first launch it asks for:
 
-1. Sign in at [develop.battle.net](https://develop.battle.net/access/clients) and create a client.
-2. Paste its **Client ID** and **Client Secret** into Auctioneer → **Settings**. They are stored in your OS keychain.
+1. **Your realm:** region (US or EU) and realm type (PvP, Normal, Roleplay or Roleplay PvP).
+2. **Blizzard API access:** sign in at [develop.battle.net](https://develop.battle.net/access/clients), create a
+   client (any name and redirect URL), and paste its **Client ID** and **Client Secret**. They're checked with
+   Blizzard before they're saved to your OS keychain.
+
+An [AHledger key](https://ahledger.com/developers) is optional; it only raises AHledger's rate limit.
 
 ### Verify your download
 
@@ -54,7 +71,7 @@ for each file, proving it was built by this repository's release workflow from t
 
 ```sh
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing
-gh attestation verify Auctioneer_<version>_universal.dmg -R Fm-s/wow-forever-auction-partner
+gh attestation verify <downloaded file> -R Fm-s/wow-forever-auction-partner
 ```
 
 In-app updates are additionally signed with the project's updater key and rejected if the signature doesn't match.

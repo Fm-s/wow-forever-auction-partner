@@ -3,30 +3,30 @@ import { classifyAsset, renderReleaseBody, topSection } from "./release-body.mjs
 
 const sha = (c) => c.repeat(64);
 const assets = [
-  { name: "Auctioneer_0.2.0_universal.dmg", sha256: sha("a"), size: 12_500_000 },
-  { name: "Auctioneer_universal.app.tar.gz", sha256: sha("b"), size: 12_000_000 },
-  { name: "Auctioneer_universal.app.tar.gz.sig", sha256: sha("c"), size: 400 },
-  { name: "Auctioneer_0.2.0_x64-setup.exe", sha256: sha("d"), size: 5_000_000 },
-  { name: "Auctioneer_0.2.0_arm64_en-US.msi", sha256: sha("e"), size: 6_000_000 },
-  { name: "Auctioneer_0.2.0_amd64.AppImage", sha256: sha("f"), size: 80_000_000 },
-  { name: "Auctioneer_0.2.0_arm64.deb", sha256: sha("1"), size: 7_000_000 },
-  { name: "Auctioneer-0.2.0-1.x86_64.rpm", sha256: sha("2"), size: 7_100_000 },
+  { name: "WoW.Forever.Auction.Partner_0.2.0_universal.dmg", sha256: sha("a"), size: 12_500_000 },
+  { name: "WoW.Forever.Auction.Partner_universal.app.tar.gz", sha256: sha("b"), size: 12_000_000 },
+  { name: "WoW.Forever.Auction.Partner_universal.app.tar.gz.sig", sha256: sha("c"), size: 400 },
+  { name: "WoW.Forever.Auction.Partner_0.2.0_x64-setup.exe", sha256: sha("d"), size: 5_000_000 },
+  { name: "WoW.Forever.Auction.Partner_0.2.0_arm64_en-US.msi", sha256: sha("e"), size: 6_000_000 },
+  { name: "WoW.Forever.Auction.Partner_0.2.0_amd64.AppImage", sha256: sha("f"), size: 80_000_000 },
+  { name: "WoW.Forever.Auction.Partner_0.2.0_arm64.deb", sha256: sha("1"), size: 7_000_000 },
+  { name: "WoW.Forever.Auction.Partner-0.2.0-1.x86_64.rpm", sha256: sha("2"), size: 7_100_000 },
   { name: "latest.json", sha256: sha("3"), size: 900 },
 ];
 const base = { version: "0.2.0", repo: "Fm-s/wow-forever-auction-partner", notes: "### 🚀 Features\n\n- Item groups", assets, prerelease: false };
 
 describe("classifyAsset", () => {
   it("maps installers to platform, arch and kind", () => {
-    expect(classifyAsset("Auctioneer_0.2.0_universal.dmg")).toEqual({ platform: "macOS", arch: "Universal (Apple Silicon + Intel)", kind: "Disk image (.dmg)" });
-    expect(classifyAsset("Auctioneer_0.2.0_x64-setup.exe")).toMatchObject({ platform: "Windows", arch: "x64" });
-    expect(classifyAsset("Auctioneer_0.2.0_arm64_en-US.msi")).toMatchObject({ platform: "Windows", arch: "ARM64" });
-    expect(classifyAsset("Auctioneer_0.2.0_amd64.AppImage")).toMatchObject({ platform: "Linux", arch: "x64" });
-    expect(classifyAsset("Auctioneer_0.2.0_arm64.deb")).toMatchObject({ platform: "Linux", arch: "ARM64" });
-    expect(classifyAsset("Auctioneer-0.2.0-1.x86_64.rpm")).toMatchObject({ platform: "Linux", arch: "x64" });
-    expect(classifyAsset("Auctioneer-0.2.0-1.aarch64.rpm")).toMatchObject({ platform: "Linux", arch: "ARM64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner_0.2.0_universal.dmg")).toEqual({ platform: "macOS", arch: "Universal (Apple Silicon + Intel)", kind: "Disk image (.dmg)" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner_0.2.0_x64-setup.exe")).toMatchObject({ platform: "Windows", arch: "x64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner_0.2.0_arm64_en-US.msi")).toMatchObject({ platform: "Windows", arch: "ARM64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner_0.2.0_amd64.AppImage")).toMatchObject({ platform: "Linux", arch: "x64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner_0.2.0_arm64.deb")).toMatchObject({ platform: "Linux", arch: "ARM64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner-0.2.0-1.x86_64.rpm")).toMatchObject({ platform: "Linux", arch: "x64" });
+    expect(classifyAsset("WoW.Forever.Auction.Partner-0.2.0-1.aarch64.rpm")).toMatchObject({ platform: "Linux", arch: "ARM64" });
   });
   it("returns null for updater and metadata files", () => {
-    for (const n of ["Auctioneer_universal.app.tar.gz", "x.sig", "latest.json", "SHA256SUMS.txt", "auctioneer.spdx.json"]) expect(classifyAsset(n)).toBeNull();
+    for (const n of ["WoW.Forever.Auction.Partner_universal.app.tar.gz", "x.sig", "latest.json", "SHA256SUMS.txt", "wow-forever-auction-partner-0.2.0.spdx.json"]) expect(classifyAsset(n)).toBeNull();
   });
 });
 
@@ -41,8 +41,8 @@ describe("renderReleaseBody", () => {
   });
   it("lists installers in the downloads table but not updater files", () => {
     const table = renderReleaseBody(base).split("## ⬇️ Downloads")[1].split("\n## ")[0];
-    expect(table).toContain("Auctioneer_0.2.0_universal.dmg");
-    expect(table).toContain("Auctioneer-0.2.0-1.x86_64.rpm");
+    expect(table).toContain("WoW.Forever.Auction.Partner_0.2.0_universal.dmg");
+    expect(table).toContain("WoW.Forever.Auction.Partner-0.2.0-1.x86_64.rpm");
     expect(table).not.toContain(".app.tar.gz");
     expect(table).not.toContain("latest.json");
     expect(table.indexOf("macOS")).toBeLessThan(table.indexOf("Windows"));
@@ -52,9 +52,9 @@ describe("renderReleaseBody", () => {
     const body = renderReleaseBody({
       ...base,
       assets: [
-        { name: "Auctioneer_0.2.0_arm64-setup.exe", sha256: sha("4"), size: 1 },
-        { name: "Auctioneer_0.2.0_x64_en-US.msi", sha256: sha("5"), size: 1 },
-        { name: "Auctioneer_0.2.0_x64-setup.exe", sha256: sha("6"), size: 1 },
+        { name: "WoW.Forever.Auction.Partner_0.2.0_arm64-setup.exe", sha256: sha("4"), size: 1 },
+        { name: "WoW.Forever.Auction.Partner_0.2.0_x64_en-US.msi", sha256: sha("5"), size: 1 },
+        { name: "WoW.Forever.Auction.Partner_0.2.0_x64-setup.exe", sha256: sha("6"), size: 1 },
       ],
     });
     const order = ["x64-setup.exe", "x64_en-US.msi", "arm64-setup.exe"].map((n) => body.indexOf(n));
@@ -74,8 +74,8 @@ describe("renderReleaseBody", () => {
     for (const a of assets) expect(body).toContain(`${a.sha256}  ${a.name}`);
   });
   it("url-encodes download links", () => {
-    const body = renderReleaseBody({ ...base, assets: [{ name: "Auctioneer (beta).dmg", sha256: sha("9"), size: 1 }] });
-    expect(body).toContain("/releases/download/v0.2.0/Auctioneer%20(beta).dmg");
+    const body = renderReleaseBody({ ...base, assets: [{ name: "WoW Forever Auction Partner (beta).dmg", sha256: sha("9"), size: 1 }] });
+    expect(body).toContain("/releases/download/v0.2.0/WoW%20Forever%20Auction%20Partner%20(beta).dmg");
   });
   it("warns on prereleases only", () => {
     expect(renderReleaseBody({ ...base, prerelease: true })).toContain("Pre-release");
@@ -86,7 +86,7 @@ describe("renderReleaseBody", () => {
     expect(body).toContain("Open Anyway");
     expect(body).toContain("Run anyway");
     expect(body).toContain("shasum -a 256 -c SHA256SUMS.txt --ignore-missing");
-    expect(body).toContain("gh attestation verify Auctioneer_0.2.0_universal.dmg -R Fm-s/wow-forever-auction-partner");
+    expect(body).toContain("gh attestation verify WoW.Forever.Auction.Partner_0.2.0_universal.dmg -R Fm-s/wow-forever-auction-partner");
   });
 });
 

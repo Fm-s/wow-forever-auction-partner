@@ -58,7 +58,7 @@ pub(crate) fn retry_after(resp: &reqwest::Response) -> u64 {
 
 pub(crate) fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("Auctioneer/0.1")
+        .user_agent(concat!("WoWForeverAuctionPartner/", env!("CARGO_PKG_VERSION"), " (+https://github.com/Fm-s/wow-forever-auction-partner)"))
         .timeout(Duration::from_secs(120))
         .build()
         .expect("reqwest client")

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- WoW Forever Auction Partner: a gold coin embossed with ∞ (the sideways 8 = Forever) on the app's midnight tile. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22324a"/>
+      <stop offset="1" stop-color="#111924"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.46" r="0.5">
+      <stop offset="0" stop-color="#e0b13a" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#e0b13a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="coin" cx="0.38" cy="0.32" r="0.78">
+      <stop offset="0" stop-color="#fff0b0"/>
+      <stop offset="0.28" stop-color="#f6cf5c"/>
+      <stop offset="0.66" stop-color="#d9a12e"/>
+      <stop offset="1" stop-color="#9c6716"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff2c0"/>
+      <stop offset="0.45" stop-color="#c88f24"/>
+      <stop offset="1" stop-color="#7a4c0c"/>
+    </linearGradient>
+    <linearGradient id="face" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3c650"/>
+      <stop offset="1" stop-color="#c98d22"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <!-- tile (macOS grid: 824 square at 100, radius 185) -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="3"/>
+  <circle cx="512" cy="500" r="380" fill="url(#glow)"/>
+
+  <!-- coin shadow -->
+  <ellipse cx="512" cy="742" rx="250" ry="40" fill="#000" opacity="0.45" filter="url(#shadow)"/>
+
+  <!-- coin: edge, rim, face -->
+  <circle cx="512" cy="512" r="292" fill="#6e440a"/>
+  <circle cx="512" cy="504" r="292" fill="url(#rim)"/>
+  <circle cx="512" cy="504" r="256" fill="url(#coin)"/>
+  <circle cx="512" cy="504" r="238" fill="none" stroke="#a46d1a" stroke-opacity="0.55" stroke-width="5"/>
+  <circle cx="512" cy="504" r="232" fill="url(#face)" opacity="0.35"/>
+
+  <!-- ∞, embossed: highlight below-right, shadow above-left, then the face -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="46">
+    <path d="M512 504 C452 414 336 414 336 504 C336 594 452 594 512 504 C572 414 688 414 688 504 C688 594 572 594 512 504 Z" stroke="#fff3c4" stroke-opacity="0.75" transform="translate(4 6)"/>
+    <path d="M512 504 C452 414 336 414 336 504 C336 594 452 594 512 504 C572 414 688 414 688 504 C688 594 572 594 512 504 Z" stroke="#7a4a0c" stroke-opacity="0.85" transform="translate(-3 -4)"/>
+    <path d="M512 504 C452 414 336 414 336 504 C336 594 452 594 512 504 C572 414 688 414 688 504 C688 594 572 594 512 504 Z" stroke="#b67a1c"/>
+  </g>
+
+  <!-- specular sweep on the coin -->
+  <path d="M330 380 A230 230 0 0 1 560 286" fill="none" stroke="#fffbe6" stroke-opacity="0.55" stroke-width="14" stroke-linecap="round"/>
+</svg>

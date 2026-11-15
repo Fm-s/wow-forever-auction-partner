@@ -43,13 +43,15 @@ pub fn pause_label(paused: bool) -> &'static str {
 /// Builds the menu-bar icon: status line, Open, Pause/Resume, Quit.
 pub fn build(app: &AppHandle, paused: bool) -> tauri::Result<TrayItems> {
     let status = MenuItem::with_id(app, "status", "Starting…", false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", "Open Auctioneer", true, None::<&str>)?;
+    let open = MenuItem::with_id(app, "open", "Open WoW Forever Auction Partner", true, None::<&str>)?;
     let pause = MenuItem::with_id(app, "pause", pause_label(paused), true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
     let menu = Menu::with_items(app, &[&status, &sep, &open, &pause, &quit])?;
-    let mut builder = TrayIconBuilder::with_id("main")
-        .tooltip("Auctioneer")
+    // The coin without the app icon's tile: a dark square reads as a blob at menu-bar size.
+    let builder = TrayIconBuilder::with_id("main")
+        .icon(tauri::include_image!("./icons/tray.png"))
+        .tooltip("WoW Forever Auction Partner")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -66,9 +68,6 @@ pub fn build(app: &AppHandle, paused: bool) -> tauri::Result<TrayItems> {
                 show_main_window(tray.app_handle());
             }
         });
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
     builder.build(app)?;
     Ok(TrayItems { status, pause })
 }

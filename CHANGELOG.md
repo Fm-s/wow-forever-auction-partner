@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Auctioneer are documented here.
+All notable changes to WoW Forever Auction Partner are documented here.
 This file is generated from commit messages by [git-cliff](https://git-cliff.org).
 
 ## Unreleased

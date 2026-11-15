@@ -120,7 +120,7 @@ export function SettingsView({
               </select>
             </label>
           </div>
-          <p className="hint">{realmSwitchNote(settings, realm) ?? "Auctioneer tracks this realm type's Alliance, Horde and Blackwater auction houses."}</p>
+          <p className="hint">{realmSwitchNote(settings, realm) ?? "Tracking this realm type's Alliance, Horde and Blackwater auction houses."}</p>
         </section>
         <section>
           <h2>Blizzard API</h2>

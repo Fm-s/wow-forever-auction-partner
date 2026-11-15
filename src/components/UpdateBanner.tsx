@@ -56,7 +56,7 @@ export function UpdateBanner() {
     <div className="update-banner" role="status">
       <div className="update-row">
         <span>
-          <strong>Auctioneer v{update.version}</strong> is available
+          <strong>WoW Forever Auction Partner v{update.version}</strong> is available
           <span className="muted"> · you have v{update.currentVersion}</span>
         </span>
         {update.body && (

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCollectorStatus, getGroups, getSettings, onStatus } from "./api";
 import { realmLabel } from "./realm";
 import { SetupView } from "./views/SetupView";
+import logo from "./assets/logo.png";
 import { HouseSelect } from "./components/HouseSelect";
 import { hhmm } from "./time";
 import type { AppSettings, CollectorStatus, Group, House, ItemRef } from "./types";
@@ -84,7 +85,10 @@ export default function App() {
   return (
     <div className={`app house-theme-${house}`}>
       <header className="topbar">
-        <span className="brand">Auctioneer</span>
+        <span className="brand">
+          <img src={logo} alt="" />
+          WoW Forever Auction Partner
+        </span>
         <span className="realm" title="Realm being tracked (change it in Settings)">
           {realmLabel(settings)}
         </span>

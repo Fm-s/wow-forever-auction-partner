@@ -61,16 +61,16 @@ export function renderReleaseBody({ version, repo, notes, assets, prerelease }) 
 
   out.push("## ⬇️ Downloads", "", "| Platform | Architecture | Package | Size |", "|---|---|---|---|");
   for (const a of installers) out.push(`| ${a.info.platform} | ${a.info.arch} | [${a.info.kind}](${url(a.name)}) | ${mb(a.size)} |`);
-  out.push("", "Already installed? Auctioneer offers the update in-app on its next launch.", "");
+  out.push("", "Already installed? WoW Forever Auction Partner offers the update in-app on its next launch.", "");
 
   out.push(
     "## 🚪 First launch",
     "",
     "These builds are not signed with an Apple or Microsoft certificate, so the OS asks once before the first launch.",
     "",
-    "- **macOS:** open the `.dmg` and drag Auctioneer to Applications. On first launch macOS says it can't verify the app — open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine /Applications/Auctioneer.app`.) After each update macOS may ask once for your login password so Auctioneer can read its saved credentials — choose **Always Allow**.",
+    "- **macOS:** open the `.dmg` and drag WoW Forever Auction Partner to Applications. On first launch macOS says it can't verify the app — open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. (Or run `xattr -dr com.apple.quarantine \"/Applications/WoW Forever Auction Partner.app\"`.) After each update macOS may ask once for your login password so the app can read its saved credentials — choose **Always Allow**.",
     "- **Windows:** SmartScreen shows “Windows protected your PC” — click **More info → Run anyway**.",
-    "- **Linux:** `chmod +x Auctioneer_*.AppImage && ./Auctioneer_*.AppImage`, or install the `.deb` / `.rpm`. Credentials are stored via the Secret Service (GNOME Keyring / KWallet).",
+    "- **Linux:** `chmod +x WoW*Forever*Auction*Partner*.AppImage` and run it, or install the `.deb` / `.rpm`. Credentials are stored via the Secret Service (GNOME Keyring / KWallet).",
     "",
   );
 

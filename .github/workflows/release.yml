@@ -131,7 +131,7 @@ jobs:
           else
             flags=()
             [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
-            gh release create "$TAG" --draft --verify-tag --title "Auctioneer $TAG" --notes-file notes.md "${flags[@]}"
+            gh release create "$TAG" --draft --verify-tag --title "WoW Forever Auction Partner $TAG" --notes-file notes.md "${flags[@]}"
             read -r id draft <<< "$(find_release)"
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
@@ -264,7 +264,7 @@ jobs:
         with:
           path: .
           format: spdx-json
-          output-file: assets/auctioneer-${{ needs.verify.outputs.version }}.spdx.json
+          output-file: assets/wow-forever-auction-partner-${{ needs.verify.outputs.version }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
 

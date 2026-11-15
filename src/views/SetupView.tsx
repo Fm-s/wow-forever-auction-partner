@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { completeSetup, getCredentialsStatus } from "../api";
 import { REALM_TYPES, REALM_TYPE_LABEL, REGIONS, REGION_LABEL } from "../realm";
+import logo from "../assets/logo.png";
 import type { AppSettings, CredentialsStatus, RealmType, Region } from "../types";
 
 const REALM_TYPE_HINT: Record<RealmType, string> = {
@@ -66,7 +67,10 @@ export function SetupView({ initial, onDone }: { initial: AppSettings; onDone: (
   return (
     <div className="setup">
       <div className="setup-card">
-        <div className="setup-brand">Auctioneer</div>
+        <div className="setup-brand">
+          <img src={logo} alt="" />
+          WoW Forever Auction Partner
+        </div>
         <ol className="setup-steps" aria-label="Setup steps">
           <li aria-current={step === 1 ? "step" : undefined}>Realm</li>
           <li aria-current={step === 2 ? "step" : undefined}>Blizzard API</li>
@@ -81,7 +85,7 @@ export function SetupView({ initial, onDone }: { initial: AppSettings; onDone: (
           >
             <h1>Where do you play?</h1>
             <p className="hint">
-              Auctioneer tracks the Alliance, Horde and Blackwater auction houses of one WoW Forever realm type. You can change it later in Settings.
+              The app tracks the Alliance, Horde and Blackwater auction houses of one WoW Forever realm type. You can change it later in Settings.
             </p>
             <fieldset className="choice-row">
               <legend>Region</legend>
