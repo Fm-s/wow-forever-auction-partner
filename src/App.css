@@ -738,3 +738,47 @@ button.primary {
     animation-duration: 2.4s;
   }
 }
+
+/* in-app update */
+.update-banner {
+  padding: 8px 20px;
+  background: color-mix(in srgb, var(--gold) 12%, var(--panel));
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.update-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.update-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-actions button.primary {
+  padding: 4px 14px;
+}
+
+.update-banner .link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--gold);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.update-notes {
+  margin: 8px 0 2px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: inherit;
+  color: var(--muted);
+}

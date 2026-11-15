@@ -102,6 +102,8 @@ pub fn run() {
         // One collector per database: a second launch just shows the running instance.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main_window(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![HIDDEN_ARG])))
         .setup(setup)
         .on_window_event(|window, event| {
