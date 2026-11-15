@@ -1,6 +1,6 @@
 -- User-defined item groups (shared by all houses); members are exact variants.
 CREATE TABLE item_groups (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     created_at INTEGER NOT NULL
 );

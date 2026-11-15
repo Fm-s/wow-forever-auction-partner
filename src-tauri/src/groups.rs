@@ -163,6 +163,16 @@ mod tests {
     }
 
     #[test]
+    fn deleted_ids_are_never_reused() {
+        let c = open_in_memory();
+        let first = create_group(&c, "A", 1).unwrap().id;
+        let newest = create_group(&c, "B", 1).unwrap().id;
+        delete_group(&c, newest).unwrap();
+        let next = create_group(&c, "C", 1).unwrap().id;
+        assert!(next != newest && next != first, "a new group must not inherit a deleted group's id (and its filter selection)");
+    }
+
+    #[test]
     fn delete_removes_members() {
         let c = open_in_memory();
         let id = create_group(&c, "Gone", 1).unwrap().id;

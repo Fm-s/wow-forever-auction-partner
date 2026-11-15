@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createGroup, setGroupMember } from "../api";
 import { clampMenu } from "../menuPosition";
+import { onDismiss } from "../dismiss";
 import { qualityClass } from "../quality";
 import type { Group } from "../types";
 
@@ -42,22 +43,7 @@ export function GroupMenu({ target, groups, onChanged, onClose }: Props) {
     ref.current?.querySelector<HTMLElement>(naming ? "input" : "button")?.focus();
   }, [naming]);
 
-  useEffect(() => {
-    const outside = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && onClose();
-    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", outside);
-    document.addEventListener("keydown", key);
-    window.addEventListener("scroll", onClose, true);
-    window.addEventListener("resize", onClose);
-    window.addEventListener("blur", onClose);
-    return () => {
-      document.removeEventListener("mousedown", outside);
-      document.removeEventListener("keydown", key);
-      window.removeEventListener("scroll", onClose, true);
-      window.removeEventListener("resize", onClose);
-      window.removeEventListener("blur", onClose);
-    };
-  }, [onClose]);
+  useEffect(() => onDismiss(() => ref.current, onClose), [onClose]);
 
   const isMember = (g: Group) => g.members.some((m) => m.itemId === target.itemId && m.variantKey === target.variantKey);
 
@@ -95,22 +81,24 @@ export function GroupMenu({ target, groups, onChanged, onClose }: Props) {
         <span className={qualityClass(target.quality)}>{target.name}</span>
         {target.variantKey && <span className="variant">{target.variantKey}</span>}
       </div>
-      {groups.map((g) => (
-        <button
-          key={g.id}
-          type="button"
-          role="menuitemcheckbox"
-          aria-checked={isMember(g)}
-          className="menu-item"
-          disabled={busy}
-          onClick={() => void toggle(g)}
-        >
-          <span className="menu-check" aria-hidden="true">
-            {isMember(g) ? "✓" : ""}
-          </span>
-          {g.name}
-        </button>
-      ))}
+      <div className="menu-groups">
+        {groups.map((g) => (
+          <button
+            key={g.id}
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={isMember(g)}
+            className="menu-item"
+            disabled={busy}
+            onClick={() => void toggle(g)}
+          >
+            <span className="menu-check" aria-hidden="true">
+              {isMember(g) ? "✓" : ""}
+            </span>
+            {g.name}
+          </button>
+        ))}
+      </div>
       {groups.length > 0 && <div className="menu-sep" role="separator" />}
       {naming ? (
         <form

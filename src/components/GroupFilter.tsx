@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { onDismiss } from "../dismiss";
 import type { Group } from "../types";
 
 interface Props {
@@ -14,17 +15,8 @@ export function GroupFilter({ groups, selected, onChange }: Props) {
   const chosen = groups.filter((g) => selected.includes(g.id));
   const label = chosen.length === 0 ? "All groups" : chosen.length === 1 ? chosen[0].name : `${chosen.length} groups`;
 
-  useEffect(() => {
-    if (!open) return;
-    const outside = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", outside);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", outside);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
+  useEffect(() => (open ? onDismiss(() => ref.current, close) : undefined), [open, close]);
 
   const toggle = (id: number) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
 

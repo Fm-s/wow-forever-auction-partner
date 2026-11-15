@@ -724,8 +724,11 @@ td.empty-row {
 .menu {
   position: fixed;
   z-index: 60;
+  display: flex;
+  flex-direction: column;
   min-width: 220px;
   max-width: 320px;
+  max-height: calc(100vh - 16px);
   padding: 5px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -744,6 +747,12 @@ td.empty-row {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/* Only the group list scrolls; the header and "New group…" stay reachable. */
+.menu-groups {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .menu-item {
