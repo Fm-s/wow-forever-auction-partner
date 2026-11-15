@@ -129,10 +129,22 @@ jobs:
             fi
             echo "Reusing draft release $id"
           else
-            flags=()
-            [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
-            gh release create "$TAG" --draft --verify-tag --title "WoW Forever Auction Partner $TAG" --notes-file notes.md "${flags[@]}"
-            read -r id draft <<< "$(find_release)"
+            git_ref=$(gh api "repos/$GH_REPO/git/ref/tags/$TAG" --jq .ref) \
+              || { echo "::error::Tag $TAG does not exist on GitHub."; exit 1; }
+            echo "Creating draft for $git_ref"
+            # Take the id from the create response: the list endpoint can lag
+            # behind a just-created draft and return nothing.
+            id=$(gh api -X POST "repos/$GH_REPO/releases" \
+              -f tag_name="$TAG" \
+              -f name="WoW Forever Auction Partner $TAG" \
+              -F body=@notes.md \
+              -F draft=true \
+              -F prerelease="$PRERELEASE" \
+              --jq .id)
+          fi
+          if ! [[ "$id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Could not determine the release id (got '$id')."
+            exit 1
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
@@ -245,9 +257,11 @@ jobs:
 
       - name: Download built assets from the draft
         run: |
+          [[ "$RELEASE_ID" =~ ^[0-9]+$ ]] || { echo "::error::Missing release id (got '$RELEASE_ID')."; exit 1; }
           mkdir -p assets
           gh api "repos/$GH_REPO/releases/$RELEASE_ID/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' |
             while IFS=$'\t' read -r id name; do
+              [ -n "$id" ] && [ -n "$name" ] || { echo "::error::Unexpected asset listing line: '$id' '$name'"; exit 1; }
               case "$name" in latest.json|SHA256SUMS.txt|*.spdx.json) continue ;; esac  # regenerated below
               gh api -H "Accept: application/octet-stream" "repos/$GH_REPO/releases/assets/$id" > "assets/$name"
             done
