@@ -9,6 +9,7 @@ import { HealthView } from "./views/HealthView";
 import { ItemView } from "./views/ItemView";
 import { MarketView } from "./views/MarketView";
 import { SettingsView } from "./views/SettingsView";
+import { UpdateBanner } from "./components/UpdateBanner";
 
 type View = "market" | "item" | "health" | "settings";
 
@@ -105,6 +106,7 @@ export default function App() {
         </span>
       </header>
       <div className="house-band" aria-hidden="true" />
+      <UpdateBanner />
       <main>
         {view === "market" && (
           <MarketView

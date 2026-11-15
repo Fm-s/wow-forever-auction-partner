@@ -15,7 +15,7 @@ use collector::{Collector, CollectorEvent, Endpoints};
 use db::Db;
 use settings::{load_settings, save_settings, AppSettings};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 pub const EVENT_STATUS: &str = "collector://status";
@@ -103,6 +103,8 @@ pub fn run() {
         // One collector per database: a second launch just shows the running instance.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main_window(app)))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![HIDDEN_ARG])))
         .setup(setup)
         .on_window_event(|window, event| {
@@ -134,9 +136,11 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
-            if let RunEvent::Reopen { .. } = event {
-                tray::show_main_window(app);
+        .run(|_app, _event| {
+            // Clicking the Dock icon while the window is hidden. macOS-only event.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                tray::show_main_window(_app);
             }
         });
 }

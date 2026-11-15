@@ -2,7 +2,8 @@
 name = "auctioneer"
 version = "0.1.0"
 description = "WoW Forever PvP auction tracker"
-authors = []
+authors = ["Felipe Souza"]
+repository = "https://github.com/Fm-s/wow-forever-auction-partner"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -30,9 +31,11 @@ chrono = "0.4"
 bytes = "1"
 futures = "0.3"
 tauri-plugin-autostart = "2"
-keyring = { version = "3", features = ["apple-native"] }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 rusqlite = { version = "0.41.1", features = ["bundled"] }
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

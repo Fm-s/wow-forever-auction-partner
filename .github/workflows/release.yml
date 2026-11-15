@@ -1,0 +1,293 @@
+name: Release
+
+# Push a tag like v1.2.3 (use `pnpm release 1.2.3`) to build, sign, checksum, attest and publish.
+# Tags with a suffix (v1.3.0-beta.1) become pre-releases, which the in-app updater never offers.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)build, e.g. v0.2.0. Reuses its draft release if one exists.
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  CARGO_TERM_COLOR: always
+
+# Explicit bash = `bash -eo pipefail`; the implicit default has no pipefail, so `cmd | tee` would hide failures.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: Verify tag, versions and tests
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      # Later jobs build this exact commit, so moving the tag mid-run can't mix commits in one release.
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Check updater signing key is configured
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error title=Missing secret::Add TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD under Settings → Secrets and variables → Actions (see README → Releasing)."
+            exit 1
+          fi
+
+      - name: Warn when the tag is not on main
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || echo "::warning title=Tag not on main::$TAG points at a commit that is not on main."
+
+      - uses: pnpm/action-setup@9bbca1e9dc2902adb87e8780fe5c98796985a62d # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Tag matches package.json, tauri.conf.json and Cargo.toml
+        id: version
+        run: node scripts/check-version.mjs "$TAG" | tee -a "$GITHUB_OUTPUT"
+
+      - run: pnpm build
+      - run: pnpm test
+
+      - run: ./.github/scripts/linux-deps.sh
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          workspaces: src-tauri
+          save-if: false
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Release notes from commits
+        run: |
+          node scripts/release-notes.mjs "$TAG" > notes.md
+          cat notes.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-notes
+          path: notes.md
+          if-no-files-found: error
+
+  create-release:
+    name: Create draft release
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      id: ${{ steps.release.outputs.id }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+      - name: Create or reuse draft
+        id: release
+        run: |
+          find_release() {
+            gh api "repos/$GH_REPO/releases?per_page=100" --paginate \
+              --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\"" | head -n1
+          }
+          existing=$(find_release)
+          if [ -n "$existing" ]; then
+            read -r id draft <<< "$existing"
+            if [ "$draft" != "true" ]; then
+              echo "::error::Release $TAG is already published. Bump the version and tag again."
+              exit 1
+            fi
+            echo "Reusing draft release $id"
+          else
+            flags=()
+            [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+            gh release create "$TAG" --draft --verify-tag --title "Auctioneer $TAG" --notes-file notes.md "${flags[@]}"
+            read -r id draft <<< "$(find_release)"
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: [verify, create-release]
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (universal)
+            os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin
+          - name: Windows x64
+            os: windows-latest
+            rust-targets: ""
+            args: ""
+          - name: Windows ARM64
+            os: windows-11-arm
+            rust-targets: ""
+            # WiX (MSI) has no native ARM64 toolchain; ship the NSIS installer.
+            args: --bundles nsis
+          - name: Linux x64
+            os: ubuntu-22.04
+            rust-targets: ""
+            args: ""
+          - name: Linux ARM64
+            os: ubuntu-22.04-arm
+            rust-targets: ""
+            args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: ./.github/scripts/linux-deps.sh
+
+      - uses: pnpm/action-setup@9bbca1e9dc2902adb87e8780fe5c98796985a62d # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.name }}
+
+      - name: Build arguments
+        id: args
+        env:
+          ARGS: ${{ matrix.args }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          # WiX rejects non-numeric pre-release versions (1.0.0-beta.1), so betas ship NSIS only on Windows.
+          if [ "$RUNNER_OS" = "Windows" ] && [ "$PRERELEASE" = "true" ] && [[ "$ARGS" != *--bundles* ]]; then
+            ARGS="$ARGS --bundles nsis"
+          fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+
+      - uses: tauri-apps/tauri-action@2d793bf2c8c505b9b76211601b09aab48922225d # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.id }}
+          args: ${{ steps.args.outputs.args }}
+          # latest.json is assembled once in the publish job; per-job writes race each other.
+          uploadUpdaterJson: false
+          retryAttempts: 2
+
+  publish:
+    name: Checksums, attestations, SBOM and publish
+    needs: [verify, create-release, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_ID: ${{ needs.create-release.outputs.id }}
+      VERSION: ${{ needs.verify.outputs.version }}
+      PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-notes
+
+      - name: Download built assets from the draft
+        run: |
+          mkdir -p assets
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID/assets?per_page=100" --paginate --jq '.[] | "\(.id)\t\(.name)"' |
+            while IFS=$'\t' read -r id name; do
+              case "$name" in latest.json|SHA256SUMS.txt|*.spdx.json) continue ;; esac  # regenerated below
+              gh api -H "Accept: application/octet-stream" "repos/$GH_REPO/releases/assets/$id" > "assets/$name"
+            done
+          ls -la assets
+
+      - name: Updater manifest (latest.json)
+        run: |
+          node scripts/latest-json.mjs --version "$VERSION" --repo "$GH_REPO" --notes notes.md --assets assets > latest.json
+          mv latest.json assets/
+          jq -r '.platforms | keys[]' assets/latest.json
+
+      - name: SBOM (SPDX)
+        uses: anchore/sbom-action@fffec3d851af758d56fee099cf3fbf8aa8779843 # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: assets/auctioneer-${{ needs.verify.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: SHA256SUMS.txt
+        working-directory: assets
+        run: |
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: assets/SHA256SUMS.txt
+
+      - name: Upload manifest, checksums and SBOM
+        run: gh release upload "$TAG" assets/latest.json assets/SHA256SUMS.txt assets/*.spdx.json --clobber
+
+      - name: Write release body and publish
+        run: |
+          flags=(--latest)
+          if [ "$PRERELEASE" = "true" ]; then flags=(--prerelease --latest=false); body_flags=(--prerelease); fi
+          node scripts/release-body.mjs --version "$VERSION" --repo "$GH_REPO" --notes notes.md --assets assets "${body_flags[@]}" > body.md
+          gh release edit "$TAG" --notes-file body.md --draft=false "${flags[@]}"
+          url=$(gh release view "$TAG" --json url --jq .url)
+          echo "### 🚀 Published [$TAG]($url)" >> "$GITHUB_STEP_SUMMARY"
