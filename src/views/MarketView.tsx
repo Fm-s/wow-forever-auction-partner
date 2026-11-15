@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  metaHelper,
+  rowPaginationFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_text,
+  tableFeatures,
+  useTable,
   type SortingState,
 } from "@tanstack/react-table";
 import { getMarket, onSnapshot } from "../api";
@@ -19,7 +23,17 @@ import { GroupMenu, type MenuTarget } from "../components/GroupMenu";
 import { hhmm } from "../time";
 import type { Group, House, ItemRef, MarketRow, MarketView as MarketData } from "../types";
 
-const col = createColumnHelper<MarketRow>();
+const features = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  sortedRowModel: createSortedRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  // what sortFn "auto" picks for string columns, as v8 did
+  sortFns: { alphanumeric: sortFn_alphanumeric, text: sortFn_text },
+  columnMeta: metaHelper<{ num?: boolean }>(),
+});
+
+const col = createColumnHelper<typeof features, MarketRow>();
 
 function Pct({ v }: { v: number | null }) {
   if (v === null) return <span className="muted">—</span>;
@@ -27,7 +41,7 @@ function Pct({ v }: { v: number | null }) {
   return <span className={cls}>{`${v > 0 ? "+" : ""}${v.toFixed(1)}%`}</span>;
 }
 
-const columns = [
+const columns = col.columns([
   col.accessor("name", {
     header: "Item",
     cell: (c) => (
@@ -84,7 +98,7 @@ const columns = [
     cell: (c) => <Pct v={c.getValue()} />,
     meta: { num: true },
   }),
-];
+]);
 
 interface Props {
   house: House;
@@ -125,15 +139,13 @@ export function MarketView({ house, onOpenItem, groups, selectedGroups, onSelect
   const rows = useMemo(() => (data ? filterRows(data.rows, { search, itemClass, quality, groupKeys }) : []), [data, search, itemClass, quality, groupKeys]);
   const options = useMemo(() => filterOptions(data?.rows ?? []), [data]);
 
-  const table = useReactTable({
+  const table = useTable({
+    features,
     data: rows,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    initialState: { pagination: { pageSize: 100 } },
+    initialState: { pagination: { pageIndex: 0, pageSize: 100 } },
     autoResetPageIndex: true,
   });
 
@@ -143,7 +155,7 @@ export function MarketView({ house, onOpenItem, groups, selectedGroups, onSelect
     return <div className="view-empty">No snapshots for this house yet. The collector fetches one every few minutes; check Sources if this persists.</div>;
 
   const showCredit = data.rows.some((r) => r.ahlMin !== null);
-  const page = table.getState().pagination;
+  const page = table.state.pagination;
 
   return (
     <>
@@ -175,7 +187,7 @@ export function MarketView({ house, onOpenItem, groups, selectedGroups, onSelect
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => {
-                const num = (h.column.columnDef.meta as { num?: boolean } | undefined)?.num;
+                const num = h.column.columnDef.meta?.num;
                 const dir = h.column.getIsSorted();
                 return (
                   <th
@@ -184,7 +196,7 @@ export function MarketView({ house, onOpenItem, groups, selectedGroups, onSelect
                     onClick={h.column.getToggleSortingHandler()}
                     aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
                   >
-                    {flexRender(h.column.columnDef.header, h.getContext())}
+                    <table.FlexRender header={h} />
                     {dir === "asc" ? " ▲" : dir === "desc" ? " ▼" : ""}
                   </th>
                 );
@@ -216,9 +228,9 @@ export function MarketView({ house, onOpenItem, groups, selectedGroups, onSelect
                 });
               }}
             >
-              {r.getVisibleCells().map((c) => (
-                <td key={c.id} className={(c.column.columnDef.meta as { num?: boolean } | undefined)?.num ? "num" : ""}>
-                  {flexRender(c.column.columnDef.cell, c.getContext())}
+              {r.getAllCells().map((c) => (
+                <td key={c.id} className={c.column.columnDef.meta?.num ? "num" : ""}>
+                  <table.FlexRender cell={c} />
                 </td>
               ))}
             </tr>
