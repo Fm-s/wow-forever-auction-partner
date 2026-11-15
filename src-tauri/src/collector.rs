@@ -110,6 +110,8 @@ pub struct Collector {
     emit: Box<dyn Fn(CollectorEvent) + Send + Sync>,
     state: Mutex<RunState>,
     wake: Notify,
+    /// Client for on-demand lookups (tooltips), kept apart from the cycle's, whose lock is held for a whole cycle.
+    lookup: StdMutex<Option<(Credentials, Arc<BlizzardClient>)>>,
 }
 
 type Emit = Box<dyn Fn(CollectorEvent) + Send + Sync>;
@@ -135,6 +137,7 @@ impl Collector {
             emit,
             state: Mutex::new(RunState::default()),
             wake: Notify::new(),
+            lookup: StdMutex::new(None),
         })
     }
 
@@ -175,14 +178,29 @@ impl Collector {
         }
     }
 
+    /// Blizzard client for on-demand lookups; `None` without credentials. Reads the Keychain (blocking).
+    pub fn lookup_client(&self) -> Option<Arc<BlizzardClient>> {
+        let creds = self.load_creds()?;
+        let mut slot = self.lookup.lock().expect("lookup");
+        if slot.as_ref().is_none_or(|(c, _)| *c != creds) {
+            let client = Arc::new(BlizzardClient::new(self.blizzard_config(&creds)));
+            *slot = Some((creds, client));
+        }
+        slot.as_ref().map(|(_, b)| b.clone())
+    }
+
+    fn blizzard_config(&self, creds: &Credentials) -> BlizzardConfig {
+        BlizzardConfig {
+            api_base: self.endpoints.blizzard_api.clone(),
+            token_url: self.endpoints.blizzard_token.clone(),
+            client_id: creds.blizzard_client_id.clone(),
+            client_secret: creds.blizzard_client_secret.clone(),
+        }
+    }
+
     fn clients<'a>(&self, st: &'a mut RunState, creds: Credentials) -> &'a Clients {
         if st.clients.as_ref().is_none_or(|c| c.creds != creds) {
-            let blizzard = Arc::new(BlizzardClient::new(BlizzardConfig {
-                api_base: self.endpoints.blizzard_api.clone(),
-                token_url: self.endpoints.blizzard_token.clone(),
-                client_id: creds.blizzard_client_id.clone(),
-                client_secret: creds.blizzard_client_secret.clone(),
-            }));
+            let blizzard = Arc::new(BlizzardClient::new(self.blizzard_config(&creds)));
             let ahledger = Arc::new(AhledgerClient::new(self.endpoints.ahledger.clone(), creds.ahledger_key.clone()));
             st.clients = Some(Clients { creds, blizzard, ahledger });
         }
@@ -540,6 +558,17 @@ mod tests {
         assert_eq!(report.new_snapshots, 0);
         assert_eq!(items.calls_async().await + comm.calls_async().await, 0);
         assert_eq!(h.collector.status().state, "paused");
+    }
+
+    #[tokio::test]
+    async fn lookup_client_is_reused_and_needs_credentials() {
+        let h = harness(true).await;
+        let a = h.collector.lookup_client().expect("client");
+        let b = h.collector.lookup_client().expect("client");
+        assert!(Arc::ptr_eq(&a, &b), "same client, so its token is reused");
+        let db: Db = Arc::new(StdMutex::new(open_in_memory()));
+        let none = Collector::with_credentials(db, Endpoints::production(), Box::new(|_| {}), None);
+        assert!(none.lookup_client().is_none());
     }
 
     #[tokio::test]

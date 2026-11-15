@@ -1,11 +1,18 @@
-export function qualityClass(q: string | null | undefined): string {
-  return q ? `q-${q.toLowerCase()}` : "q-common";
-}
+import { qualityClass } from "../quality";
+import { ItemHover } from "./ItemTooltip";
 
-export function ItemName({ name, quality, iconUrl, variantKey }: { name: string; quality: string | null; iconUrl: string | null; variantKey?: string }) {
+export { qualityClass };
+
+export function ItemName({ itemId, name, quality, iconUrl, variantKey }: { itemId: number; name: string; quality: string | null; iconUrl: string | null; variantKey?: string }) {
   return (
     <span className="item-cell">
-      {iconUrl ? <img src={iconUrl} alt="" loading="lazy" /> : <span style={{ width: 22 }} />}
+      {iconUrl ? (
+        <ItemHover itemId={itemId} name={name} quality={quality} variantKey={variantKey}>
+          <img src={iconUrl} alt="" loading="lazy" />
+        </ItemHover>
+      ) : (
+        <span style={{ width: 22 }} />
+      )}
       <span className={qualityClass(quality)}>{name}</span>
       {variantKey ? <span className="variant" title="Bonus list (random suffix variant)">{variantKey}</span> : null}
     </span>

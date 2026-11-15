@@ -1,0 +1,207 @@
+{
+ "_links": {
+  "self": {
+   "href": "https://us.api.blizzard.com/data/wow/item/13477?namespace=static-1.60.1_70399-forever-us"
+  }
+ },
+ "id": 13477,
+ "name": "Recipe: Superior Mana Potion",
+ "quality": {
+  "type": "COMMON",
+  "name": "Common"
+ },
+ "level": 52,
+ "required_level": 0,
+ "media": {
+  "key": {
+   "href": "https://us.api.blizzard.com/data/wow/media/item/13477?namespace=static-1.60.1_70399-forever-us"
+  },
+  "id": 13477
+ },
+ "item_class": {
+  "key": {
+   "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.60.1_70399-forever-us"
+  },
+  "name": "Recipe",
+  "id": 9
+ },
+ "item_subclass": {
+  "key": {
+   "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/6?namespace=static-1.60.1_70399-forever-us"
+  },
+  "name": "Alchemy",
+  "id": 6
+ },
+ "inventory_type": {
+  "type": "NON_EQUIP",
+  "name": "Non-equippable"
+ },
+ "purchase_price": 12000,
+ "sell_price": 3000,
+ "max_count": 0,
+ "is_equippable": false,
+ "is_stackable": false,
+ "description": "Teaches you how to make a Superior Mana Potion.",
+ "preview_item": {
+  "item": {
+   "key": {
+    "href": "https://us.api.blizzard.com/data/wow/item/13477?namespace=static-1.60.1_70399-forever-us"
+   },
+   "id": 13477
+  },
+  "quality": {
+   "type": "COMMON",
+   "name": "Common"
+  },
+  "name": "Recipe: Superior Mana Potion",
+  "media": {
+   "key": {
+    "href": "https://us.api.blizzard.com/data/wow/media/item/13477?namespace=static-1.60.1_70399-forever-us"
+   },
+   "id": 13477
+  },
+  "item_class": {
+   "key": {
+    "href": "https://us.api.blizzard.com/data/wow/item-class/9?namespace=static-1.60.1_70399-forever-us"
+   },
+   "name": "Recipe",
+   "id": 9
+  },
+  "item_subclass": {
+   "key": {
+    "href": "https://us.api.blizzard.com/data/wow/item-class/9/item-subclass/6?namespace=static-1.60.1_70399-forever-us"
+   },
+   "name": "Alchemy",
+   "id": 6
+  },
+  "inventory_type": {
+   "type": "NON_EQUIP",
+   "name": "Non-equippable"
+  },
+  "sell_price": {
+   "value": 3000,
+   "display_strings": {
+    "header": "Sell Price:",
+    "gold": "0",
+    "silver": "30",
+    "copper": "0"
+   }
+  },
+  "requirements": {
+   "skill": {
+    "profession": {
+     "key": {
+      "href": "https://us.api.blizzard.com/data/wow/profession/171?namespace=static-1.60.1_70399-forever-us"
+     },
+     "name": "Alchemy",
+     "id": 171
+    },
+    "level": 260,
+    "display_string": "Requires Alchemy (260)"
+   }
+  },
+  "description": "Teaches you how to make a Superior Mana Potion.",
+  "recipe": {
+   "item": {
+    "item": {
+     "key": {
+      "href": "https://us.api.blizzard.com/data/wow/item/13443?namespace=static-1.60.1_70399-forever-us"
+     },
+     "id": 13443
+    },
+    "quality": {
+     "type": "COMMON",
+     "name": "Common"
+    },
+    "name": "Superior Mana Potion",
+    "media": {
+     "key": {
+      "href": "https://us.api.blizzard.com/data/wow/media/item/13443?namespace=static-1.60.1_70399-forever-us"
+     },
+     "id": 13443
+    },
+    "item_class": {
+     "key": {
+      "href": "https://us.api.blizzard.com/data/wow/item-class/0?namespace=static-1.60.1_70399-forever-us"
+     },
+     "name": "Consumable",
+     "id": 0
+    },
+    "item_subclass": {
+     "key": {
+      "href": "https://us.api.blizzard.com/data/wow/item-class/0/item-subclass/1?namespace=static-1.60.1_70399-forever-us"
+     },
+     "name": "Potions",
+     "id": 1
+    },
+    "inventory_type": {
+     "type": "NON_EQUIP",
+     "name": "Non-equippable"
+    },
+    "spells": [
+     {
+      "spell": {
+       "key": {
+        "href": "https://us.api.blizzard.com/data/wow/spell/17530?namespace=static-1.60.1_70399-forever-us"
+       },
+       "name": "Restore Mana",
+       "id": 17530
+      },
+      "description": "Use: Restores 900 to 1,500 mana. (2 Min Cooldown)"
+     }
+    ],
+    "sell_price": {
+     "value": 400,
+     "display_strings": {
+      "header": "Sell Price:",
+      "gold": "0",
+      "silver": "4",
+      "copper": "0"
+     }
+    },
+    "requirements": {
+     "level": {
+      "value": 41,
+      "display_string": "Requires Level 41"
+     }
+    },
+    "is_subclass_hidden": true
+   },
+   "reagents": [
+    {
+     "reagent": {
+      "key": {
+       "href": "https://us.api.blizzard.com/data/wow/item/8838?namespace=static-1.60.1_70399-forever-us"
+      },
+      "name": "Sungrass",
+      "id": 8838
+     },
+     "quantity": 2
+    },
+    {
+     "reagent": {
+      "key": {
+       "href": "https://us.api.blizzard.com/data/wow/item/8839?namespace=static-1.60.1_70399-forever-us"
+      },
+      "name": "Blindweed",
+      "id": 8839
+     },
+     "quantity": 2
+    },
+    {
+     "reagent": {
+      "key": {
+       "href": "https://us.api.blizzard.com/data/wow/item/8925?namespace=static-1.60.1_70399-forever-us"
+      },
+      "name": "Crystal Vial",
+      "id": 8925
+     },
+     "quantity": 1
+    }
+   ],
+   "reagents_display_string": "Sungrass (2), Blindweed (2), Crystal Vial"
+  },
+  "is_subclass_hidden": true
+ },
+ "purchase_quantity": 1
+}

@@ -28,7 +28,7 @@ function Pct({ v }: { v: number | null }) {
 const columns = [
   col.accessor("name", {
     header: "Item",
-    cell: (c) => <ItemName name={c.row.original.name} quality={c.row.original.quality} iconUrl={c.row.original.iconUrl} variantKey={c.row.original.variantKey} />,
+    cell: (c) => <ItemName itemId={c.row.original.itemId} name={c.row.original.name} quality={c.row.original.quality} iconUrl={c.row.original.iconUrl} variantKey={c.row.original.variantKey} />,
   }),
   col.accessor("minPrice", { header: "Min buyout", cell: (c) => <Money copper={c.getValue()} />, sortUndefined: "last", meta: { num: true } }),
   col.accessor("median", { header: "Median", cell: (c) => <Money copper={c.getValue()} />, meta: { num: true } }),

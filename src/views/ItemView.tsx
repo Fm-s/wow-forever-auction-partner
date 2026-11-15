@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { getCrossHouse, getItemHistory, getItemRow, onSnapshot } from "../api";
 import { debounce } from "../debounce";
 import { AhledgerCredit } from "../components/AhledgerCredit";
-import { qualityClass } from "../components/ItemName";
+import { qualityClass } from "../quality";
+import { ItemHover } from "../components/ItemTooltip";
 import { Money } from "../components/Money";
 import { PriceChart, SoldChart } from "../components/PriceChart";
 import { HOUSE_LABEL, type CrossHouseRow, type HistoryRange, type House, type ItemHistory, type ItemRef, type MarketRow } from "../types";
@@ -47,7 +48,11 @@ export function ItemView({ house, item, onBack }: { house: House; item: ItemRef;
   return (
     <>
       <div className="item-head">
-        {row?.iconUrl && <img src={row.iconUrl} alt="" />}
+        {row?.iconUrl && (
+          <ItemHover itemId={item.itemId} name={name} quality={row.quality} variantKey={item.variantKey}>
+            <img src={row.iconUrl} alt="" />
+          </ItemHover>
+        )}
         <div>
           <h1 className={qualityClass(row?.quality)}>{name}</h1>
           <div className="meta">

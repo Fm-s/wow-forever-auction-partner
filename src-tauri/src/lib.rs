@@ -115,6 +115,8 @@ pub fn run() {
             commands::get_item_row,
             commands::get_item_history,
             commands::get_cross_house,
+            commands::get_cached_item_tooltip,
+            commands::fetch_item_tooltip,
             commands::get_health,
             commands::get_settings,
             commands::save_settings,

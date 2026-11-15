@@ -2,6 +2,8 @@
 //! (UI/tray) thread, and only holds the DB lock for the query itself.
 use crate::collector::{now_unix, CollectorStatus};
 use crate::credentials::{credentials_status, save_credentials as store_credentials, Credentials, CredentialsStatus};
+use crate::blizzard::static_data::{cached_tooltip, fetch_tooltip, store_tooltip};
+use crate::blizzard::tooltip::ItemTooltip;
 use crate::db::Db;
 use crate::domain::House;
 use crate::queries::health::{health, Health};
@@ -10,6 +12,7 @@ use crate::queries::market::{cross_house, item_row, market, CrossHouseRow, Marke
 use crate::settings::{load_settings, AppSettings};
 use crate::AppState;
 use rusqlite::Connection;
+use serde::Serialize;
 use tauri::{AppHandle, State};
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -46,6 +49,32 @@ pub async fn get_item_history(state: State<'_, AppState>, house: House, item_id:
 #[tauri::command]
 pub async fn get_cross_house(state: State<'_, AppState>, item_id: i64, variant_key: String) -> Result<Vec<CrossHouseRow>, String> {
     with_db(state.db.clone(), move |c| cross_house(c, item_id, &variant_key, &load_settings(c))).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TooltipLookup {
+    /// false = not stored locally yet; call `fetch_item_tooltip`.
+    pub cached: bool,
+    pub tooltip: Option<ItemTooltip>,
+}
+
+/// Local lookup only, never touches the network.
+#[tauri::command]
+pub async fn get_cached_item_tooltip(state: State<'_, AppState>, item_id: i64) -> Result<TooltipLookup, String> {
+    let found = with_db(state.db.clone(), move |c| cached_tooltip(c, item_id)).await?;
+    Ok(TooltipLookup { cached: found.is_some(), tooltip: found.flatten() })
+}
+
+/// Fetches an item's tooltip from Blizzard and stores it, so later lookups are local.
+#[tauri::command]
+pub async fn fetch_item_tooltip(state: State<'_, AppState>, item_id: i64) -> Result<Option<ItemTooltip>, String> {
+    let collector = state.collector.clone();
+    let client = blocking(move || collector.lookup_client().ok_or_else(|| "Add Blizzard API credentials in Settings".to_string())).await?;
+    let tooltip = fetch_tooltip(&client, item_id).await.map_err(err)?;
+    let stored = tooltip.clone();
+    with_db(state.db.clone(), move |c| store_tooltip(c, item_id, stored.as_ref(), now_unix())).await?;
+    Ok(tooltip)
 }
 
 #[tauri::command]

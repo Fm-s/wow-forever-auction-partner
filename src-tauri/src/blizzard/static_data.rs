@@ -1,7 +1,8 @@
 use crate::blizzard::client::{BlizzardClient, FetchError};
+use crate::blizzard::tooltip::{parse_tooltip, ItemTooltip};
 use crate::settings::{get_kv, set_kv};
 use futures::stream::{self, StreamExt};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 pub const NAMESPACE_STATIC: &str = "static-forever-us";
@@ -27,6 +28,7 @@ pub struct ItemMeta {
     pub sell_price: Option<i64>,
     /// Resolved static namespace, e.g. `static-1.60.1_70399-forever-us`.
     pub static_ns: String,
+    pub tooltip: Option<ItemTooltip>,
 }
 
 /// Build number in `static-1.60.1_70399-forever-us` (70399); 0 when absent.
@@ -59,20 +61,24 @@ enum Fetched {
     Failed,
 }
 
-async fn fetch_one(client: &BlizzardClient, id: i64) -> Fetched {
-    let mut item = None;
-    let mut fallback = false;
+/// The item endpoint response, from Forever or else Classic Era (`true` = fallback). `Ok(None)` when neither has it.
+async fn fetch_item_json(client: &BlizzardClient, id: i64) -> Result<Option<(serde_json::Value, bool)>, FetchError> {
     for (ns, is_fallback) in [(NAMESPACE_STATIC, false), (NAMESPACE_FALLBACK, true)] {
         match client.get_json(&format!("/data/wow/item/{id}?namespace={ns}&locale=en_US")).await {
-            Ok(v) => {
-                item = Some(v);
-                fallback = is_fallback;
-                break;
-            }
+            Ok(v) => return Ok(Some((v, is_fallback))),
             Err(FetchError::Status(404)) => continue,
-            Err(_) => return Fetched::Failed,
+            Err(e) => return Err(e),
         }
     }
+    Ok(None)
+}
+
+async fn fetch_one(client: &BlizzardClient, id: i64) -> Fetched {
+    let (item, fallback) = match fetch_item_json(client, id).await {
+        Ok(Some((v, fb))) => (Some(v), fb),
+        Ok(None) => (None, false),
+        Err(_) => return Fetched::Failed,
+    };
     let icon_url = match client.get_json(&format!("/data/wow/media/item/{id}?namespace={NAMESPACE_STATIC}&locale=en_US")).await {
         Ok(media) => media["assets"]
             .as_array()
@@ -104,6 +110,7 @@ async fn fetch_one(client: &BlizzardClient, id: i64) -> Fetched {
         purchase_quantity: item["purchase_quantity"].as_i64(),
         sell_price: item["sell_price"].as_i64(),
         static_ns,
+        tooltip: parse_tooltip(&item),
     }))
 }
 
@@ -120,7 +127,34 @@ fn placeholder(id: i64, icon_url: Option<String>) -> ItemMeta {
         purchase_quantity: None,
         sell_price: None,
         static_ns: NS_MISSING.to_string(),
+        tooltip: None,
     }
+}
+
+/// Locally cached tooltip: `None` = never fetched, `Some(None)` = item has no tooltip data.
+pub fn cached_tooltip(conn: &Connection, item_id: i64) -> rusqlite::Result<Option<Option<ItemTooltip>>> {
+    let row: Option<Option<String>> = conn.query_row("SELECT tooltip_json FROM item_tooltips WHERE item_id = ?1", [item_id], |r| r.get(0)).optional()?;
+    // An unreadable row (older format) counts as never fetched.
+    Ok(row.and_then(|json| match json {
+        None => Some(None),
+        Some(j) => serde_json::from_str(&j).ok().map(Some),
+    }))
+}
+
+/// Caches a tooltip (or its absence) for an item.
+pub fn store_tooltip(conn: &Connection, item_id: i64, tooltip: Option<&ItemTooltip>, now: i64) -> rusqlite::Result<()> {
+    let json = tooltip.map(|t| serde_json::to_string(t).expect("tooltip serializes"));
+    conn.prepare_cached(
+        "INSERT INTO item_tooltips(item_id, tooltip_json, fetched_at) VALUES (?1, ?2, ?3)
+         ON CONFLICT(item_id) DO UPDATE SET tooltip_json = excluded.tooltip_json, fetched_at = excluded.fetched_at",
+    )?
+    .execute(params![item_id, json, now])?;
+    Ok(())
+}
+
+/// Fetches one item's tooltip (Forever, then Classic Era). `Ok(None)` when neither has the item.
+pub async fn fetch_tooltip(client: &BlizzardClient, item_id: i64) -> Result<Option<ItemTooltip>, FetchError> {
+    Ok(fetch_item_json(client, item_id).await?.and_then(|(v, _)| parse_tooltip(&v)))
 }
 
 /// Fetches item + media metadata, 10 at a time. Forever 404s fall back to Classic Era; items found in
@@ -153,6 +187,7 @@ pub fn store_items(conn: &mut Connection, items: &[ItemMeta], now: i64) -> rusql
         )?;
         for m in items {
             st.execute(params![m.item_id, m.name, m.quality, m.item_class, m.item_subclass, m.level, m.icon_url, m.purchase_price, m.purchase_quantity, m.sell_price, m.static_ns, now])?;
+            store_tooltip(&tx, m.item_id, m.tooltip.as_ref(), now)?;
         }
     }
     let forever_ns = items.iter().map(|m| m.static_ns.as_str()).filter(|ns| ns.starts_with("static-") && ns.ends_with("-forever-us"));
@@ -173,7 +208,48 @@ mod tests {
     use httpmock::prelude::*;
 
     fn meta(id: i64, ns: &str) -> ItemMeta {
-        ItemMeta { item_id: id, name: format!("Item {id}"), quality: None, item_class: None, item_subclass: None, level: None, icon_url: None, purchase_price: None, purchase_quantity: None, sell_price: None, static_ns: ns.into() }
+        ItemMeta { item_id: id, name: format!("Item {id}"), quality: None, item_class: None, item_subclass: None, level: None, icon_url: None, purchase_price: None, purchase_quantity: None, sell_price: None, static_ns: ns.into(), tooltip: None }
+    }
+
+    fn mock_token(server: &MockServer) -> BlizzardClient {
+        server.mock(|when, then| { when.method(POST).path("/token"); then.status(200).json_body(serde_json::json!({"access_token":"t","expires_in":3600})); });
+        BlizzardClient::new(BlizzardConfig { api_base: server.base_url(), token_url: server.url("/token"), client_id: "a".into(), client_secret: "b".into() })
+    }
+
+    #[test]
+    fn tooltip_cache_distinguishes_unknown_missing_and_stored() {
+        let c = open_in_memory();
+        let t = crate::blizzard::tooltip::parse_tooltip(&serde_json::from_str(include_str!("../../tests/fixtures/item_13444.json")).unwrap()).unwrap();
+        assert_eq!(cached_tooltip(&c, 13444).unwrap(), None);
+        store_tooltip(&c, 13444, Some(&t), 5).unwrap();
+        store_tooltip(&c, 31337, None, 5).unwrap();
+        assert_eq!(cached_tooltip(&c, 13444).unwrap(), Some(Some(t)));
+        assert_eq!(cached_tooltip(&c, 31337).unwrap(), Some(None));
+    }
+
+    #[test]
+    fn store_items_caches_tooltips_including_missing() {
+        let mut c = open_in_memory();
+        let t = crate::blizzard::tooltip::parse_tooltip(&serde_json::from_str(include_str!("../../tests/fixtures/item_4500.json")).unwrap()).unwrap();
+        let mut bag = meta(4500, "static-1.60.1_70399-forever-us");
+        bag.tooltip = Some(t.clone());
+        store_items(&mut c, &[bag, placeholder(31337, None)], 0).unwrap();
+        assert_eq!(cached_tooltip(&c, 4500).unwrap(), Some(Some(t)));
+        assert_eq!(cached_tooltip(&c, 31337).unwrap(), Some(None), "missing items are not fetched again on hover");
+    }
+
+    #[tokio::test]
+    async fn fetch_tooltip_falls_back_reports_missing_and_errors() {
+        let server = MockServer::start_async().await;
+        let client = mock_token(&server);
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/16922").query_param("namespace", "static-forever-us"); then.status(404); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/16922").query_param("namespace", "static-classic1x-us"); then.status(200).body(include_str!("../../tests/fixtures/item_16922.json")); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/31337"); then.status(404); }).await;
+        server.mock_async(|when, then| { when.method(GET).path("/data/wow/item/999"); then.status(500); }).await;
+        let t = fetch_tooltip(&client, 16922).await.unwrap().expect("fallback tooltip");
+        assert!(t.lines.iter().any(|l| l.left == "Classes: Priest"));
+        assert_eq!(fetch_tooltip(&client, 31337).await.unwrap(), None);
+        assert!(fetch_tooltip(&client, 999).await.is_err(), "server errors are not cached as missing");
     }
 
     #[tokio::test]
@@ -194,6 +270,7 @@ mod tests {
         assert_eq!((m.purchase_price, m.purchase_quantity, m.sell_price), (Some(55), Some(1), Some(13)));
         assert_eq!(m.static_ns, "static-1.60.1_70399-forever-us");
         assert_eq!(m.icon_url.as_deref(), Some("https://render.worldofwarcraft.com/forever-us/icons/56/132889.jpg"));
+        assert_eq!(m.tooltip.as_ref().map(|t| t.name.as_str()), Some("Linen Cloth"), "backfill keeps the tooltip so hover needs no fetch");
     }
 
     #[tokio::test]

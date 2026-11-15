@@ -133,3 +133,23 @@ export interface ItemRef {
   itemId: number;
   variantKey: string;
 }
+
+export interface TooltipLine {
+  /** Empty text is a spacer. */
+  left: string;
+  right: string | null;
+  /** "normal" | "green" | "yellow" | "blue" | "muted" | "q-<quality>" */
+  tone: string;
+}
+
+export interface ItemTooltip {
+  name: string;
+  quality: string | null;
+  lines: TooltipLine[];
+  sellPrice: number | null;
+}
+
+export interface TooltipLookup {
+  cached: boolean;
+  tooltip: ItemTooltip | null;
+}
